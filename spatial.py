@@ -87,12 +87,16 @@ def K(sigma, C):
 
 def square_signal(t, closure_length, region, m, n):
 	start = int((t % (n*closure_length))/closure_length)
+	print(start)
 	if start+m-1 >= n:
 		end = (start + m - 1)%n
 	else:
 		end = (start + m - 1)
-	
+	print(end)
+	print("ReGION: ", region)
 	if region >= start and region <= end:
+		return 0
+	elif start + m - 1 >= n and (region >= start or region <= end):
 		return 0
 	else:
 		return 1
@@ -114,7 +118,7 @@ def patch_system(X, t, closure_length, f, m, n):
 	for i in range(n):
 		for j in range(n):
 			P_influx[i] += (kP[i][j]) *P[j]  
-		dPs[i] = 0*P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - f*P[i] *(square_signal(t, closure_length, i, m, n)) 
+		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - f*P[i] *(square_signal(t, closure_length, i, m, n)) 
 		dCs[i] = (i_C + r*C[i])*(1-M[i]-C[i])*(1-alpha*M[i]) - d*C[i]
 		dMs[i] = (i_M+gamma*M[i])*(1-M[i]-C[i])-g*M[i]*P[i]/(g*eta*M[i]+1) 
 	#concatenate into 1D vector to pass to next step
@@ -146,6 +150,7 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 
 #some graphs for exploring the model
 
+graph_sol(20, 0.25, 2, 5, 0.95, False)
 #two patches 
 graph_sol(50, 0.25, 0, 2, 0.95, False)
 graph_sol(50, 0.25, 1, 2, 0.95, False)
@@ -158,21 +163,21 @@ graph_sol(50, 0.25, 1, 3, 1, False)
 graph_sol(20, 0.25, 1, 5, 0.95, False)
 
 #why are some patches recovering and not others for some of these?
-graph_sol(20, 0.25, 2, 5, 0.95, False)
 
-graph_sol(40, 0.35, 2, 5, 0.95, False)
+
+#graph_sol(40, 0.35, 2, 5, 0.95, False)
 
 
 #ten patches!
 graph_sol(10, 0.22, 1, 10, 0.95, False)
 
-graph_sol(10, 0.22, 2, 10, 0.95, False)
+#graph_sol(10, 0.22, 2, 10, 0.95, False)
 
 #why does this not reduce to the 1 out of 2 case? overlap alters the scenario? 
-graph_sol(10, 0.22, 5, 10, 0.95, False)
+#graph_sol(10, 0.22, 5, 10, 0.95, False)
 
 
-initialize_patch_model(10, 0.95)
+initialize_patch_model(10, 0.9)
 
 n = 10
 M =  10
@@ -182,13 +187,13 @@ coral_array_LO =  np.zeros(shape=(M,M))
 coral_array_AVG =  np.zeros(shape=(M,M))
 period_array = np.empty(M)
 m_array = np.empty(M)
-fishing = 0.3
+fishing = 0.25
 
 for period in range(1,M+1):
 		for m in range(M):
 			displacer = 1/(1-float(m)/float(n))
 			#final_coral_HI = odeint(patch_system, XHI, t, args = (period, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
-			final_coral_LO = odeint(patch_system, X1, t, args = (period*20+1, displacer*float(fishing) ,m, 10))# full_output = 1)
+			final_coral_LO = odeint(patch_system, X1, t, args = (period*20, displacer*float(fishing) ,m, 10))# full_output = 1)
 			avg1 = 0
 			avg2 = 0
 			for year in range(999- (999 % (period)) - 2*(period), 999 - (999 % (period))):
@@ -199,8 +204,8 @@ for period in range(1,M+1):
 			#coral_array_HI[period-1][m] = avg1
 			coral_array_LO[period-1][m] = avg2
 			coral_array_AVG[period-1][m] = 0.5 * (avg1 + avg2)
-			period_array[period-1] = np.float128(period) / np.float128(n)
-			m_array[m] = np.float128(m)/ np.float128(n)
+			period_array[period-1] = period
+			m_array[m] = m
 			show_labels = False
 
 plt.title('heatmap', fontsize = 20)
