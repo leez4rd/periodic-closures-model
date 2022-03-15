@@ -87,13 +87,10 @@ def K(sigma, C):
 
 def square_signal(t, closure_length, region, m, n):
 	start = int((t % (n*closure_length))/closure_length)
-	print(start)
 	if start+m-1 >= n:
 		end = (start + m - 1)%n
 	else:
 		end = (start + m - 1)
-	print(end)
-	print("ReGION: ", region)
 	if region >= start and region <= end:
 		return 0
 	elif start + m - 1 >= n and (region >= start or region <= end):
@@ -147,7 +144,7 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 	plt.show()
 
 #########################################################################################
-
+'''
 #some graphs for exploring the model
 
 graph_sol(20, 0.25, 2, 5, 0.95, False)
@@ -165,22 +162,76 @@ graph_sol(20, 0.25, 1, 5, 0.95, False)
 #why are some patches recovering and not others for some of these?
 
 
-#graph_sol(40, 0.35, 2, 5, 0.95, False)
+graph_sol(40, 0.35, 2, 5, 0.95, False)
 
 
 #ten patches!
 graph_sol(10, 0.22, 1, 10, 0.95, False)
 
-#graph_sol(10, 0.22, 2, 10, 0.95, False)
+graph_sol(10, 0.22, 2, 10, 0.95, False)
 
 #why does this not reduce to the 1 out of 2 case? overlap alters the scenario? 
-#graph_sol(10, 0.22, 5, 10, 0.95, False)
+graph_sol(10, 0.22, 5, 10, 0.95, False)
 
+'''
 
 initialize_patch_model(10, 0.9)
 
 n = 10
 M =  10
+
+#plot average coral over all regions after convergence to equilibrium versus m, versus n, and with different dispersals
+f = 0.25
+closure_lengths = [5, 10, 20, 50, 100]
+ms = np.empty(10)
+coral_covers = np.empty(10)
+for closure_length in closure_lengths: 
+	avg = 0 
+	for m in range(M):
+		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
+		
+		for year in range(999- (999 % closure_length*n) - 2*closure_length*n, 999 - (999 % closure_length*n)):
+			avg += sol[year][1]
+		avg = avg / (2*closure_length*n + 1)
+		ms[m] = m
+		coral_covers[m] = avg
+	plt.plot(ms, coral_covers, label = 'coral starts low, CL = %d' % closure_length)
+plt.xlabel('percentage time closed')
+plt.ylabel('coral cover at end')
+plt.legend(loc=0)
+plt.show()
+
+#now plotting 1/n closures as we vary n 
+f = 0.25
+m = 1
+closure_lengths = [1, 5, 10, 20, 50, 100]
+ns = np.empty(10)
+coral_covers = np.empty(10)
+for closure_length in closure_lengths: 
+	avg = 0 
+	for n in range(1,M+1):
+		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
+		
+		for year in range(999- (999 % closure_length*n) - 2*closure_length*n, 999 - (999 % closure_length*n)):
+			avg += sol[year][1]
+		avg = avg / (2*closure_length*n + 1)
+		ns[n] = n
+		coral_covers[n] = avg
+	plt.plot(ns, coral_covers, label = 'coral starts low, CL = %d' % closure_length)
+plt.xlabel('percentage time closed')
+plt.ylabel('coral cover at end')
+plt.legend(loc=0)
+plt.show()
+
+
+
+
+
+
+
+
+
+
 #heatmap of period vs m -- a bit messy right now 
 coral_array_HI =  np.zeros(shape=(M,M))
 coral_array_LO =  np.zeros(shape=(M,M))
