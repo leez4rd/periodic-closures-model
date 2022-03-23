@@ -176,13 +176,39 @@ graph_sol(10, 0.22, 5, 10, 0.95, False)
 '''
 
 initialize_patch_model(10, 0.9)
+'''
+#plot final coral cover versus percentage time closed 
+closure_length = 50
+coral_covers = np.empty(10)
+ns = np.empty(10)
+m = 1
+for n in range(1, 10):
+	fishing = 0.35
+	frac = m / n
+	fishing = fishing / (1.00001 - frac)
+	sol = odeint(patch_system, X1, t, args = (closure_length,fishing, m, n))
+	ns[n] = n
+	avg = 0.0
+	for year in range(999- (999 % closure_length) - 2*closure_length, 999 - (999 % closure_length)):
+		avg += sol[year][1]
+	avg = avg / (2*closure_length + 1)
+	coral_covers[n] = avg #lo_sol[999 - (999 % (period))][1]
+	
+plt.figure()
+plt.plot(percentages, coral_covers, label = 'coral starts low')
+plt.xlabel('percentage time closed')
+plt.ylabel('coral cover at end')
+plt.legend(loc=0)
+plt.show()
+'''
 
 n = 10
 M =  10
 
+'''
 #plot average coral over all regions after convergence to equilibrium versus m, versus n, and with different dispersals
 f = 0.25
-closure_lengths = [5, 10, 20, 50, 100]
+closure_lengths = [20] #[5, 10, 20, 50, 100]
 ms = np.empty(10)
 coral_covers = np.empty(10)
 for closure_length in closure_lengths: 
@@ -200,17 +226,22 @@ plt.xlabel('percentage time closed')
 plt.ylabel('coral cover at end')
 plt.legend(loc=0)
 plt.show()
-
+''' 
 #now plotting 1/n closures as we vary n 
 f = 0.25
-m = 1
-closure_lengths = [1, 5, 10, 20, 50, 100]
+m = 4
+closure_lengths = [1, 5, 10, 20, 50]
 ns = np.empty(10)
 coral_covers = np.empty(10)
 for closure_length in closure_lengths: 
 	avg = 0 
-	for n in range(1,M+1):
-		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
+	n = 0 
+	M = 10
+	print(closure_length)
+	for n in range(2,M):
+		print(n)
+		initialize_patch_model(n, 0.9)
+		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1.0001-m/n), m, n))
 		
 		for year in range(999- (999 % closure_length*n) - 2*closure_length*n, 999 - (999 % closure_length*n)):
 			avg += sol[year][1]
@@ -218,7 +249,7 @@ for closure_length in closure_lengths:
 		ns[n] = n
 		coral_covers[n] = avg
 	plt.plot(ns, coral_covers, label = 'coral starts low, CL = %d' % closure_length)
-plt.xlabel('percentage time closed')
+plt.xlabel('n')
 plt.ylabel('coral cover at end')
 plt.legend(loc=0)
 plt.show()
