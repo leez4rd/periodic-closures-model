@@ -47,6 +47,9 @@ XHI = [0.1, C0H, M0L]
 XLO = [0.1, C0L, M0H]
 #high and low coral starting points are 0.48355, 0.02545
 
+steepness = 100
+shift = 0.0001
+
 #######################################################
 
 
@@ -90,6 +93,7 @@ def square_signal(t, closure_length, region, m, n):
 	start = int((t % (n*closure_length))/closure_length)
 	if start+m-1 >= n:
 		end = (start + m - 1)%n
+
 	else:
 		end = (start + m - 1)
 	if region >= start and region <= end:
@@ -106,6 +110,8 @@ def sigmoid_signal(t, period, p):
 	else:
 		return 1.0 / (1 + math.exp(-(t % period - p * period)))
 
+def fishing(parrotfish, f):
+	return f/(1+math.exp(-steepness*(parrotfish-shift)))
 
 def patch_system(X, t, closure_length, f, m, n): 
 	P_influx = [0]*n
@@ -117,7 +123,7 @@ def patch_system(X, t, closure_length, f, m, n):
 		for j in range(n):
 			P_influx[i] += (kP[i][j]) *P[j]  
 		#print(P_influx[i])
-		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - f*P[i] *(square_signal(t, closure_length, i, m, n)) 
+		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - fishing(P[i], f)*P[i] *(square_signal(t, closure_length, i, m, n))
 		dCs[i] = (i_C + r*C[i])*(1-M[i]-C[i])*(1-alpha*M[i]) - d*C[i]
 		dMs[i] = (i_M+gamma*M[i])*(1-M[i]-C[i])-g*M[i]*P[i]/(g*eta*M[i]+1) 
 	
@@ -137,7 +143,9 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 	plt.figure()
 	sol = odeint(patch_system, IC_set, t, args = (closure_length, f/(1-m/n), m, n))
 	print(sol[:, n:2*n])
-	plt.plot(sol[:, n:2*n],  label = 'coral')
+	patch_num = [x for x in range(1,n+1)]
+	for i in range(len(patch_num)):
+		plt.plot(sol[:, n+i],  label = 'patch % d'% patch_num[i])
 	plt.xlabel('time')
 	plt.ylabel('abundance')
 	plt.title('spatial model')
@@ -147,6 +155,12 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 	plt.show()
 
 #########################################################################################
+
+#graph the fishing effort function 
+parrotfish = np.linspace(0, 1, 10000)
+fishing_effort = [fishing(p, 1) for p in parrotfish]
+plt.plot(parrotfish, fishing_effort)
+plt.show()
 '''
 #some graphs for exploring the model
 graph_sol(30, 0.25, 1, 2, 0.95, False)
@@ -178,42 +192,44 @@ graph_sol(10, 0.22, 2, 10, 0.95, False)
 
 #why does this not reduce to the 1 out of 2 case? overlap alters the scenario? 
 graph_sol(10, 0.22, 5, 10, 0.95, False)
-
+'''
 
 
 #graph_sol(50, 0.45, 1, 30, 0.95, False)
 
 #graph_sol(5, 0.35, 1, 7, 0, False )
-'''
 
-#plot C vs n for different ms
+'''
+#plot C vs n for different ms - need different coral arrays for each run 
 closure_length = 20
 
-for m in range(0, 6):
-	coral_covers = np.empty(11)
-	ns = np.empty(11)
-	for n in range(2, 6):
-		initialize_patch_model(n, 0.9)
-		fishing = 0.35
+for n in range(2, 6):
+	coral_covers = np.empty(n)
+	ns = np.empty(n)
+	for m in range(2, n):
+		print(coral_covers)
+		initialize_patch_model(n, 0.95)
+		fishing = 0.25
 		frac = m / n
 		fishing = fishing / (1.00001 - frac)
 		sol = odeint(patch_system, X1, t, args = (closure_length,fishing, m, n))
-		ns[n] = n
+		ns[n-2] = n
 		avg = 0.0
 		for year in range(999- (999 % closure_length) - 2*closure_length, 999 - (999 % closure_length)):
 			avg += sol[year][n]
 		avg = avg / (2*closure_length + 1)
-		coral_covers[n] = avg 
-	plt.plot(ns, coral_covers, label = 'coral starts low')
-	plt.xlabel('percentage time closed')
-	plt.ylabel('coral cover at end')
-	plt.legend(loc=0)
+		coral_covers[n-2] = avg 
+		print(coral_covers)
+		plt.plot(ns, coral_covers, label = 'coral starts low')
+		plt.xlabel('percentage time closed')
+		plt.ylabel('coral cover at end')
+		plt.legend(loc=0)
 plt.show()
-
-
+'''
+'''
 n = 10
 M =  10
-
+m = 1 
 
 #plot average coral over all regions after convergence to equilibrium versus m, versus n, and with different dispersals
 f = 0.25
@@ -222,20 +238,20 @@ ms = np.empty(10)
 coral_covers = np.empty(10)
 for closure_length in closure_lengths: 
 	avg = 0 
-	for m in range(M):
-		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
+	initialize_patch_model(n, 0.95)
+	sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
 		
-		for year in range(999- (999 % closure_length*n) - 2*closure_length*n, 999 - (999 % closure_length*n)):
-			avg += sol[year][1]
-		avg = avg / (2*closure_length*n + 1)
-		ms[m] = m
-		coral_covers[m] = avg
+	for year in range(999- (999 % closure_length) - 2*closure_length, 999 - (999 % closure_length)):
+		avg += sol[year][n]
+	avg = avg / (2*closure_length*n + 1)
+	ms[m] = m
+	coral_covers[m] = avg
 	plt.plot(ms, coral_covers, label = 'coral starts low, CL = %d' % closure_length)
 plt.xlabel('percentage time closed')
 plt.ylabel('coral cover at end')
 plt.legend(loc=0)
 plt.show()
-
+'''
 
 
 
@@ -268,7 +284,7 @@ plt.legend(loc=0)
 txt="frac_nomove: " + str(frac_nomove) + "\npercent closure: " + str(m/n) +"\nclosure time: " + str(closure_length) + "\nfishing: " + str(f)
 plt.figtext(0.3, .31, txt, wrap=True, fontsize=8)
 plt.savefig('/home/lee/fish/pycodes/spatialmodel/none_stay.png')
-#plt.show()
+plt.show()
 
 
 #lotsa plots 
