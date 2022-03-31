@@ -68,6 +68,10 @@ Xeq = [0.1, 0.383235864, 1-0.383235864]
 C_loeq = 0.01
 C_hieq = 0.7
 
+#fishing effort dependence on parrotfish density -- parameters
+steepness = 10
+shift = 0.1
+
 
 def K(sigma, C):
 	return (1-sigma)+sigma*C
@@ -88,33 +92,30 @@ def sigmoid_signal(t, period, p):
 #def f(parrotfish):
 	#return 1/(1+math.exp(-(parrotfish-0.1)/200))
 
+def fishing(parrotfish, f):
+	return f/(1+math.exp(-steepness*(parrotfish-shift)))
+
+parrotfish = np.linspace(0, 1, 10000)
+fishing_effort = [fishing(p, 1) for p in parrotfish]
+plt.plot(parrotfish, fishing_effort)
+plt.show()
+
 def deriv(X, t, period, f, p): 
 	P = X[0] 
 	C = X[1]
 	M = X[2]
-
 
 	#variable for closing once then returning to original net fishing 
 	CLOSE_ONCE = 1
 	if t>period:
 		CLOSE_ONCE = 0
 
-	#band-aids
-	if P<0:
-		P *= -1
-	if P <= float(0.0000000001):
-		P = float(0.0000000001)
-	if P > K(sigma, C):
-		P = K(sigma, C)
-	if C > 1:
-		C = 1
-
 	#very rough approx for collapse threshold
 	slope_thresh = 10000
 	if (1-p)*period != 0:
 		slope_thresh = (C_loeq - C_hieq)/((1-p)*(period))
 
-	P_deriv = s*P*(1 - (P / K(sigma,C))) - f*P *square_signal(t, period, p) #*CLOSE_ONCE - (1-p)*f*P*(1-CLOSE_ONCE)
+	P_deriv = s*P*(1 - (P / K(sigma,C))) - fishing(P, f)*P *square_signal(t, period, p) #*CLOSE_ONCE - (1-p)*f*P*(1-CLOSE_ONCE)
 	C_deriv = (i_C + r*C)*(1-M-C)*(1-alpha*M) - d*C + ext_C
 	M_deriv = (i_M+gamma*M)*(1-M-C)-g*M*P/(g*eta*M+1) + ext_C
 
@@ -158,7 +159,7 @@ plt.show()
 #graph_sol(200, 0, 0, False)
 #50.476
 '''
-graph_sol(40, 0.3/(1-0.4), 0.4, False)
+#graph_sol(1, 2.5/(1-0.5), 0.5, False)
 
 x  = np.linspace(0,1,1000)
 fx = lambda x: 50.476/(1-x+0.0000001)
@@ -171,7 +172,7 @@ plt.xlim([0,1])
 plt.ylim([100*5+1,0])
 plt.show()
 
-
+'''
 #testing for hysteresis over a range of values for fishing 
 p = 0
 period = 20
@@ -200,6 +201,7 @@ plt.show()
 
 '''
 #finding the unstable equilibrium for f = 0.26
+'''
 coral_covers = np.linspace(0, 1, 100)
 final_coral_covers = np.empty(len(coral_covers))
 count = 0		
@@ -209,6 +211,7 @@ for initial_coral in coral_covers:
 	count += 1
 plt.plot(coral_covers, final_coral_covers)
 plt.show()
+'''
 #about 0.3785?
 '''
 
@@ -220,10 +223,10 @@ graph_sol(50, 0.26/(1-0.7),0.7, False)
 #analogous plots changing period instead -- note that
 #f/(1-p) > fcrit
 '''
-graph_sol(40, 0.26/(1-0.52), 0.52, False)
-graph_sol(80, 0.26/(1-0.52), 0.52, False)
-graph_sol(120, 0.26/(1-0.52), 0.52, False)
-graph_sol(200, 0.26/(1-0.52), 0.52, False)
+#graph_sol(40, 0.26/(1-0.52), 0.52, False)
+#graph_sol(80, 0.26/(1-0.52), 0.52, False)
+#graph_sol(120, 0.26/(1-0.52), 0.52, False)
+#graph_sol(200, 0.26/(1-0.52), 0.52, False)
 '''
 
 #these graphs best illustrate the behavior 
@@ -236,7 +239,7 @@ graph_sol(150, 0.30/(1-0.40), 0.40, False)
 graph_sol(150, 0.30/(1-0.82), 0.82, False)
 
 
-
+'''
 
 '''
 *OBSERVATIONS*
@@ -320,12 +323,12 @@ coral_covers = np.empty(100)
 is_coral_high = False
 
 for frac_closed in range(1, 100):
-	fishing = 0.35
+	fishin = 0.25
 	frac = frac_closed
 	frac *= 0.01
-	fishing = fishing / (1.0 - frac)
-	hi_sol = odeint(deriv, XHI, t, args = (sim_period,fishing,frac))
-	lo_sol = odeint(deriv, XLO, t, args = (sim_period,fishing,frac))
+	fishin = fishin / (1.0 - frac)
+	hi_sol = odeint(deriv, XHI, t, args = (sim_period,fishin,frac))
+	lo_sol = odeint(deriv, XLO, t, args = (sim_period,fishin,frac))
 	percentages[frac_closed] = frac
 	avg = 0.0
 	if is_coral_high:
@@ -385,10 +388,10 @@ plt.show()
 '''
 
 
-'''
+
 #heatmap
-n = 100 #mesh fineness 
-m = 100
+n = 20 #mesh fineness 
+m = 20
 coral_array_HI = np.random.rand(n,n)
 coral_array_LO = np.random.rand(n,n)
 coral_array_AVG = np.random.rand(n,n)
@@ -396,14 +399,14 @@ per_array = np.empty(n)
 p_array = np.empty(n)
 pdata = []
 taudata = []
-fishing = 26
-for tau 		in range(0,n):
+fishin = 26
+for tau in range(0,n):
 		for p in range(0,n):
 			index = tau
 			TAU = tau*5+1
 			displacer = 1/(1-np.float128(p)/np.float128(n))
-			#final_coral_HI = odeint(deriv, XHI, t, args = (TAU, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
-			final_coral_LO = odeint(deriv, XLO, t, args = (TAU, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))# full_output = 1)
+			#final_coral_HI = odeint(deriv, XHI, t, args = (TAU, displacer*np.float128(fishin) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
+			final_coral_LO = odeint(deriv, XLO, t, args = (TAU, displacer*np.float128(fishin) / np.float128(n) ,np.float128(p) / np.float128(n)))# full_output = 1)
 			#FCHI = final_coral_HI[999 - (999 % (5*tau+1))][1]
 			#FCLO = final_coral_LO[999 - (999 % (5*tau+1))][1]
 			#avg1 = 0
@@ -413,7 +416,7 @@ for tau 		in range(0,n):
 				avg2 += final_coral_LO[year][1]
 			#avg1 = avg1 / (2*(TAU) + 1)
 			#avg2 = avg2 / (2*(TAU) + 1)
-
+			'''
 			if(avg2 > 0.6):
 				plt.title("closure parameters for optimal coral cover")
 				plt.xlabel("percent closed")
@@ -421,7 +424,7 @@ for tau 		in range(0,n):
 				pdata += [p]
 				taudata += [TAU]
 				plt.scatter(p, TAU)
-			
+			'''
 
 			for i in range (tau, 100):
 				FCHI += final_coral_HI[i][1]
@@ -467,11 +470,11 @@ coral_array_AVG = np.random.rand(n,n)
 f_array = np.empty(n)
 p_array = np.empty(n)
 period = 50
-for fishing in range(1,n):
+for fishin in range(1,n):
 		for p in range(1,n):
 			displacer = 1/(1-np.float128(p)/np.float128(n))
-			#final_coral_HI = odeint(deriv, XHI, t, args = (period, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
-			final_coral_LO = odeint(deriv, XLO, t, args = (period, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))# full_output = 1)
+			#final_coral_HI = odeint(deriv, XHI, t, args = (period, displacer*np.float128(fishin) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
+			final_coral_LO = odeint(deriv, XLO, t, args = (period, displacer*np.float128(fishin) / np.float128(n) ,np.float128(p) / np.float128(n)))# full_output = 1)
 			#FCHI = final_coral_HI[999 - (999 % (5*tau+1))][1]
 			#FCLO = final_coral_LO[999 - (999 % (5*tau+1))][1]
 			avg1 = 0
@@ -481,17 +484,17 @@ for fishing in range(1,n):
 				avg2 += final_coral_LO[year][1]
 			avg1 = avg1 / (2*(period) + 1)
 			avg2 = avg2 / (2*(period) + 1)
-			'''
+			
 			for i in range (tau, 100):
 				FCHI += final_coral_HI[i][1]
 				FCLO += final_coral_LO[i][1]
 			FCHI = FCHI / np.float128(100)
 			FCLO = FCLO / np.float128(100)
-			'''
+			
 			#coral_array_HI[fishing][p] = avg1
-			coral_array_LO[fishing][p] = avg2
-			coral_array_AVG[fishing][p] = 0.5 * (avg1 + avg2)
-			f_array[fishing] = np.float128(fishing) / np.float128(n)
+			coral_array_LO[fishin][p] = avg2
+			coral_array_AVG[fishin][p] = 0.5 * (avg1 + avg2)
+			f_array[fishin] = np.float128(fishin) / np.float128(n)
 			p_array[p] = np.float128(p)/ np.float128(n)
 			show_labels = False
 sb.heatmap(coral_array_AVG, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels)
@@ -508,7 +511,7 @@ plt.show()
 plt.title('Coral Starts Low', fontsize = 20)
 sb.heatmap(coral_array_LO, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
 plt.show()
-
+'''
 
 
 
