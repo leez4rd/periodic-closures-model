@@ -26,7 +26,7 @@ eta = 2 #strength of algae-herbivore feedback
 alpha = 0.5 #strength of algae-coral feedback 
 
 #time
-N = 10000 #total amount of time
+N = 1000 #total amount of time
 steps = 1000 #number of timesteps
 t = np.linspace(0, N, steps) #timestep array
 
@@ -47,8 +47,13 @@ XHI = [0.1, C0H, M0L]
 XLO = [0.1, C0L, M0H]
 #high and low coral starting points are 0.48355, 0.02545
 
+#fishing effort density dependence
 steepness = 100
 shift = 0.0001
+
+#poaching
+poaching = 0
+
 
 #######################################################
 
@@ -89,7 +94,7 @@ def initialize_patch_model(n, frac_nomove):
 def K(sigma, C):
 	return (1-sigma)+sigma*C
 
-def square_signal(t, closure_length, region, m, n):
+def square_signal(t, closure_length, region, m, n, poaching):
 	start = int((t % (n*closure_length))/closure_length)
 	if start+m-1 >= n:
 		end = (start + m - 1)%n
@@ -97,11 +102,12 @@ def square_signal(t, closure_length, region, m, n):
 	else:
 		end = (start + m - 1)
 	if region >= start and region <= end:
-		return 0
+		return poaching
 	elif start + m - 1 >= n and (region >= start or region <= end):
-		return 0
+		return poaching
 	else:
-		return 1
+		#determine whether to bake displacement into signal
+		return (1-(m/n)*poaching)#/(1-(m/n))
 	
 #this signal function is not quite working yet 
 def sigmoid_signal(t, period, p):
@@ -113,7 +119,7 @@ def sigmoid_signal(t, period, p):
 def fishing(parrotfish, f):
 	return f/(1+math.exp(-steepness*(parrotfish-shift)))
 
-def patch_system(X, t, closure_length, f, m, n): 
+def patch_system(X, t, closure_length, f, m, n, poaching): 
 	P_influx = [0]*n
 	C_influx = [0]*n
 	M_influx = [0]*n
@@ -123,7 +129,7 @@ def patch_system(X, t, closure_length, f, m, n):
 		for j in range(n):
 			P_influx[i] += (kP[i][j]) *P[j]  
 		#print(P_influx[i])
-		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - fishing(P[i], f)*P[i] *(square_signal(t, closure_length, i, m, n))
+		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - fishing(P[i], f)*P[i] *(square_signal(t, closure_length, i, m, n, poaching))
 		dCs[i] = (i_C + r*C[i])*(1-M[i]-C[i])*(1-alpha*M[i]) - d*C[i]
 		dMs[i] = (i_M+gamma*M[i])*(1-M[i]-C[i])-g*M[i]*P[i]/(g*eta*M[i]+1) 
 	
@@ -132,7 +138,7 @@ def patch_system(X, t, closure_length, f, m, n):
 
 
 #general purpose graphing function 
-def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
+def graph_sol(closure_length, f, m, n, frac_nomove, coral_high, poaching):
 
 	initialize_patch_model(n, frac_nomove)
 
@@ -141,7 +147,7 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 	else:
 		IC_set = X1
 	plt.figure()
-	sol = odeint(patch_system, IC_set, t, args = (closure_length, f/(1-m/n), m, n))
+	sol = odeint(patch_system, IC_set, t, args = (closure_length, f/(1-m/n), m, n, poaching))
 	print(sol[:, n:2*n])
 	patch_num = [x for x in range(1,n+1)]
 	for i in range(len(patch_num)):
@@ -155,17 +161,18 @@ def graph_sol(closure_length, f, m, n, frac_nomove, coral_high):
 	plt.show()
 
 #########################################################################################
-
+'''
 #graph the fishing effort function 
 parrotfish = np.linspace(0, 1, 10000)
 fishing_effort = [fishing(p, 1) for p in parrotfish]
 plt.plot(parrotfish, fishing_effort)
 plt.show()
 '''
+
 #some graphs for exploring the model
-graph_sol(30, 0.25, 1, 2, 0.95, False)
-graph_sol(30, 0.25, 1, 3, 0.95, False)
-graph_sol(30, 0.25, 1, 5, 0.95, False)
+graph_sol(30, 0.25, 1, 2, 0.95, False, 0.1)
+graph_sol(30, 0.25, 1, 3, 0.95, False, 0.1)
+graph_sol(30, 0.25, 1, 5, 0.95, False, 0.1)
 
 graph_sol(20, 0.25, 2, 5, 0.95, False)
 #two patches 
@@ -192,7 +199,6 @@ graph_sol(10, 0.22, 2, 10, 0.95, False)
 
 #why does this not reduce to the 1 out of 2 case? overlap alters the scenario? 
 graph_sol(10, 0.22, 5, 10, 0.95, False)
-'''
 
 
 #graph_sol(50, 0.45, 1, 30, 0.95, False)
@@ -254,20 +260,20 @@ plt.show()
 '''
 
 
-
+'''
 #now plotting 1/n closures as we vary n 
-f = 0.35
+f = 0.25
 m = 1
-closure_lengths = [1, 5, 10, 20, 50]
-ns = np.empty(40)
-coral_covers = np.empty(40)
-frac_nomove = 0.5
+closure_lengths = [2, 5, 10, 20, 50]
+ns = np.empty(10)
+coral_covers = np.empty(10)
+frac_nomove = 0.95
 for closure_length in closure_lengths: 
 	avg = 0 
 	n = 0 
-	M = 10
+	patches = 10
 	print(closure_length)
-	for n in range(2,M):
+	for n in range(2,patches):
 		print(n)
 		initialize_patch_model(n, frac_nomove)
 		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1.0001-m/n), m, n))
@@ -277,16 +283,52 @@ for closure_length in closure_lengths:
 		avg = avg / (2*closure_length + 1)
 		ns[n] = n
 		coral_covers[n] = avg
-	plt.plot(ns, coral_covers, label = 'coral starts low, CL = %d' % closure_length)
+	plt.plot(ns, coral_covers, label = 'CL = %d' % closure_length)
 plt.xlabel('n')
 plt.ylabel('coral cover at end')
 plt.legend(loc=0)
 txt="frac_nomove: " + str(frac_nomove) + "\npercent closure: " + str(m/n) +"\nclosure time: " + str(closure_length) + "\nfishing: " + str(f)
 plt.figtext(0.3, .31, txt, wrap=True, fontsize=8)
-plt.savefig('/home/lee/fish/pycodes/spatialmodel/none_stay.png')
+#plt.savefig('/home/lee/fish/pycodes/spatialmodel/none_stay.png')
 plt.show()
+'''
+'''
+#C vs m for n = 10
+f = 0.3
+n = 25
+closure_lengths = [2, 5, 10, 20, 50]
 
+frac_nomove = 0.95
 
+for closure_length in closure_lengths: 
+	patches = 25
+	ms = np.empty(patches)
+	coral_covers = np.empty(patches)
+	print(closure_length)
+	for m in range(0,patches):
+		avg = 0.0
+		#may be an issue with the global variables here...
+		initialize_patch_model(n, frac_nomove)
+		print(m)
+		sol = odeint(patch_system, X1, t, args = (closure_length, f/(1-m/n), m, n))
+		
+		for year in range(999- (999 % closure_length) - 2*closure_length, 999 - (999 % closure_length)):
+			avg += sol[year][n]
+		avg = avg / (2*closure_length + 1)
+		print(ms)
+		ms[m] = m
+		coral_covers[m] = avg
+		
+	plt.plot(ms, coral_covers, label = 'CL = %d' % closure_length)
+plt.xlabel('patches closed')
+plt.ylabel('coral cover at end')
+plt.legend(loc=0)
+txt="frac_nomove: " + str(frac_nomove) + "\npercent closure: " + str(m/n) +"\nclosure time: " + str(closure_length) + "\nfishing: " + str(f)
+plt.figtext(0.3, .31, txt, wrap=True, fontsize=8)
+#plt.savefig('/home/lee/fish/pycodes/spatialmodel/none_stay.png')
+plt.show()
+'''
+'''
 #lotsa plots 
 #each plot is of the final coral cover in runs for several closure lengths
 #for a particular parameter combo of fishing + dispersal 
@@ -327,42 +369,47 @@ for f in fs:
 		plt.savefig( '/home/lee/fish/pycodes/spatialmodel/' + figtitle)
 		plt.clf()
 		print("success.")
+'''
 
 
 
 
 
+graph_sol(28, 0.35, 7, 10, 0.95, False)
 
-
-
-
+patches = 10
 
 #heatmap of period vs m -- a bit messy right now 
-coral_array_HI =  np.zeros(shape=(M,M))
-coral_array_LO =  np.zeros(shape=(M,M))
-coral_array_AVG =  np.zeros(shape=(M,M))
-period_array = np.empty(M)
-m_array = np.empty(M)
-fishing = 0.25
+coral_array_HI =  np.zeros(shape=(patches,patches))
+coral_array_LO =  np.zeros(shape=(patches,patches))
+coral_array_AVG =  np.zeros(shape=(patches,patches))
+period_array = np.empty(patches)
+m_array = np.empty(patches)
+fishin = 0.35
+n = 10
+frac_nomove = 0.95
+for period in range(1,patches+1):
+	print(period)
+	print(patches)
+	for m in range(patches):
+		initialize_patch_model(n, frac_nomove)
+		displacer = 1/(1-m/float(n))
 
-for period in range(1,M+1):
-		for m in range(M):
-			displacer = 1/(1-float(m)/float(n))
-			#final_coral_HI = odeint(patch_system, XHI, t, args = (period, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
-			final_coral_LO = odeint(patch_system, X1, t, args = (period*20, displacer*float(fishing) ,m, 10))# full_output = 1)
-			avg1 = 0
-			avg2 = 0
-			for year in range(999- (999 % (period)) - 2*(period), 999 - (999 % (period))):
-				#avg1 += final_coral_HI[year][1]
-				avg2 += final_coral_LO[year][1]
-			avg1 = avg1 / (2*(period) + 1)
-			avg2 = avg2 / (2*(period) + 1)
-			#coral_array_HI[period-1][m] = avg1
-			coral_array_LO[period-1][m] = avg2
-			coral_array_AVG[period-1][m] = 0.5 * (avg1 + avg2)
-			period_array[period-1] = period
-			m_array[m] = m
-			show_labels = False
+		#final_coral_HI = odeint(patch_system, XHI, t, args = (period, displacer*np.float128(fishing) / np.float128(n) ,np.float128(p) / np.float128(n)))#full_output = 1)
+		final_coral_LO = odeint(patch_system, X1, t, args = (period*4, displacer*float(fishin) ,m, n))# full_output = 1)
+		#avg1 = 0
+		avg2 = 0
+		for year in range(999- (999 % (period*4)) - 2*(period*4), 999 - (999 % (period*4))):
+			#avg1 += final_coral_HI[year][n]
+			avg2 += final_coral_LO[year][n]
+		#avg1 = avg1 / (2*(period) + 1)
+		avg2 = avg2 / (2*(period) + 1)
+		#coral_array_HI[period-1][m] = avg1
+		coral_array_LO[period-1][m] = avg2
+		#coral_array_AVG[period-1][m] = 0.5 * (avg1 + avg2)
+		period_array[period-1] = period
+		m_array[m] = m
+		show_labels = False
 
 plt.title('heatmap', fontsize = 20)
 sb.heatmap(coral_array_LO, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
