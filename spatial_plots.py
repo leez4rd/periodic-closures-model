@@ -13,14 +13,15 @@ import spatial_model as model
 CL = 30  # closure length in years
 f = 0.25 # fishing effort 
 m = 1    # number of closures 
-n = 10   # number of patches 
+n = 20   # number of patches 
 frac_nomove = 0.95 #fraction of fish that stay put 
 poaching = 0 #percentage of fishing effort not displaced by regulation 
 IC = False   #initial condition of patches; False for all low, True for all high 
 
 # then we vary every other degree of freedom separately:
-
+model.heatmap()
 # --- Time Series --- #
+model.graph_sol(5, 0.45, 4, 10, 1, False, 0)
 '''
 # varying fishing 
 model.graph_sol(CL, f, m, n, frac_nomove, IC, poaching)

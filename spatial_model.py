@@ -48,7 +48,7 @@ XLO = [0.1, C0L, M0H]
 #high and low coral starting points are 0.48355, 0.02545
 
 #fishing effort density dependence
-steepness = 100
+steepness = 25
 shift = 0.0001
 
 #poaching
@@ -136,7 +136,7 @@ def patch_system(X, t, closure_length, f, m, n, poaching):
 	#concatenate into 1D vector to pass to next step
 	return np.concatenate((dPs, dCs, dMs), axis=0)
 
-
+# some of these should go into a separate utility function file
 #general purpose graphing function 
 def graph_sol(closure_length, f, m, n, frac_nomove, coral_high, poaching):
 
@@ -189,3 +189,104 @@ def hysteresis_zone():
 	txt="parameters" + "\nsigma: " + str(sigma) + "\neta: " + str(eta) +"\nalpha: " + str(alpha)
 	plt.figtext(0.2, 0.3, txt, wrap=True, fontsize=8)
 	plt.show()
+
+
+
+def heatmap():
+	patches = 20
+
+	#heatmap of period vs m -- a bit messy right now 
+	coral_array_HI =  np.zeros(shape=(patches,patches))
+	coral_array_LO =  np.zeros(shape=(patches,patches))
+	coral_array_AVG =  np.zeros(shape=(patches,patches))
+	period_array = np.empty(patches)
+	m_array = np.empty(patches)
+	fishin = 0.23
+	n = 20
+
+	frac_nomove = 1
+	for period in range(1,patches+1):
+		print(period)
+		print(patches)
+		for m in range(patches):
+
+			initialize_patch_model(n, frac_nomove)
+			print(n, m, sep = ' ')
+			displacer = 1/(1-m/float(n))
+			final_coral_LO = odeint(patch_system, X1, t, args = (period, displacer*float(fishin), m, n, 0))# full_output = 1)
+			#graph_sol(period*4, displacer*float(fishin), m, n, 1, False, 0)
+			#graph_sol(5, 0.45, 4, 10, 1, False, 0) -- INCONSISTENT
+			#avg1 = 0
+			avg2 = 0
+			for year in range(999- (999 % (n*period)) - 2*(n*period), 999 - (999 % (n*period))):
+				#avg1 += final_coral_HI[year][n]
+				avg2 += final_coral_LO[year][n]
+			#avg1 = avg1 / (2*(period) + 1)
+			avg2 = avg2 / (2*(period*n) + 1)
+			print(avg2)
+			print("________________________")
+			#coral_array_HI[period-1][m] = avg1
+			coral_array_LO[period-1][m] = avg2
+			#coral_array_AVG[period-1][m] = 0.5 * (avg1 + avg2)
+			period_array[period-1] = period
+			m_array[m] = m
+			show_labels = False
+
+	plt.title('heatmap', fontsize = 20)
+	sb.heatmap(coral_array_LO, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
+	plt.ylabel('period', fontsize = 10) # x-axis label with fontsize 15
+	plt.xlabel('number of closures', fontsize = 10) # y-axis label with fontsize 15
+	plt.yticks(rotation=0)
+	plt.show()
+
+
+# just finds how long it takes to reach C_1 from C_2 with zero fishing
+def time_to_eq(C_1, C_2):
+	# solve ode over sufficient number of timesteps 
+	# search through solution for point where coral is first greater than C_2
+	# the index of this will be the time
+
+
+#fast heatmap
+#simplifies m over n to lowest term and does least number of patches necessary 
+import numpy as np 
+
+def fast_heatmap():
+	patches = 10
+
+	#heatmap of period vs m -- a bit messy right now 
+	coral_array_HI =  np.zeros(shape=(patches,patches))
+	coral_array_LO =  np.zeros(shape=(patches,patches))
+	coral_array_AVG =  np.zeros(shape=(patches,patches))
+	period_array = np.empty(patches)
+	m_array = np.empty(patches)
+	fishin = 0.35
+	n = 10
+
+	frac_nomove = 1
+	for period in range(1,patches+1):
+		for m in range(patches):
+			GCD = np.gcd(m, n)
+			m = m / GCD
+			n = n / GCD
+			initialize_patch_model(n, frac_nomove)
+			displacer = 1/(1-m/float(n))
+			final_coral_LO = odeint(patch_system, X1, t, args = (period*2, displacer*float(fishin), m, n, 0))
+			avg2 = 0
+			for year in range(999- (999 % (n*period*2)) - 2*(n*period*2), 999 - (999 % (n*period*2))):
+				avg2 += final_coral_LO[year][n]
+			avg2 = avg2 / (2*(period*n*2) + 1)
+			print(avg2)
+			print("________________________")
+			coral_array_LO[period-1][m] = avg2
+			period_array[period-1] = period
+			m_array[m] = m
+			show_labels = False
+
+	plt.title('heatmap', fontsize = 20)
+	sb.heatmap(coral_array_LO, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
+	plt.ylabel('period', fontsize = 10) # x-axis label with fontsize 15
+	plt.xlabel('number of closures', fontsize = 10) # y-axis label with fontsize 15
+	plt.yticks(rotation=0)
+	plt.show()
+
