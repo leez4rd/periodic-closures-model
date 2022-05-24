@@ -44,27 +44,52 @@ class Model:
 		if model_type == 'RB':
 			# load_parameters() -- hypothetical function to load all params of RB model into this object  
 			load_parameters('RB')
-			RB_initialize_patch_model(n, frac_nomove)
+			# RB_initialize_patch_model(n, frac_nomove)
 
 		elif model_type == 'BM':
-			initialize_patch_model(n, frac_nomove)
+			# initialize_patch_model(n, frac_nomove)
 			load_parameters('BM')
 		elif model_type == 'vdL_PC':
 			load_parameters('vdL_PC')
-			initialize_patch_model(n, frac_nomove)
+			# initialize_patch_model(n, frac_nomove)
 		elif model_type == 'vdL_MP':
 			load_parameters('vdL_MP')
-			initialize_patch_model(n, frac_nomove)
+			# initialize_patch_model(n, frac_nomove)
 		elif model_type == 'vdL_MC':
-			initialize_patch_model(n, frac_nomove)
+			# initialize_patch_model(n, frac_nomove)
 			load_parameters('vdL_MC')
 		elif model_type == 'vdL': # all feedbacks active 
-			initialize_patch_model(n, frac_nomove)
-			load_parameters('vdL')
+			frac_dispersed = (1-frac_nomove)*(1/(n)) # fraction of fish that disperse to other patches symmetrically
+
+			# transition matrix for dispersal: element [i,j] of kP describes influx of P from j to i
+			kP = np.empty((n,n))
+			for i in range(n):
+				for j in range(n):
+					kP[i][j] = frac_dispersed
+					if i == j:
+						kP[i][j] = -frac_dispersed*(n - 1)
+
+			# instead of global variables here, can we initialize these within patch system? or pass them as parameters? 
+
+			P_influx = np.empty(n)
+			P = np.empty(n) 
+			C = np.empty(n) 
+			M = np.empty(n)
+			dPs = np.empty(n)
+			dCs = np.empty(n)
+			dMs = np.empty(n)
+
+			#concatenate initial condition arrays -- we can put this somewhere else 
+			
+			X1 = [P0]*n + [C0L]*n + [M0H]*n
+			X2 = [P0]*n + [C0H]*n + [M0L]*n
+
+			# initialize_patch_model(n, frac_nomove)
+			# load_parameters('vdL')
 		else:
 			print("Bad input, defaulting to Blackwood-Mumby!")
-			initialize_patch_model(n, frac_nomove)
-			load_parameters('BM')
+			# initialize_patch_model(n, frac_nomove)
+			# load_parameters('BM')
 
 	
 
