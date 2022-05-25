@@ -7,54 +7,42 @@ class Model:
 	# variable arguments based on model type? 
 	# need a function to tinker with individual parameters, and a function to list them 
 	def __init__(self, model_type, n, frac_nomove): 
+		self.model_type = model_type
+		self.n = n 
+		self.frac_nomove = frac_nomove
 
-		# load_parameters() -- hypothetical function to load all params of RB model into this object  
-		if model_type == 'RB':
-			self.load_parameters('RB')
-			# self.RB_initialize_patch_model(n, frac_nomove)
+		'''
+		#time -- maybe move this down to run model for dynamic stuff, same with ICs
+		self.yrs = yrs #total amount of time
+		self.t = np.linspace(0, yrs, yrs) #timestep array -- same number of timesteps as years 
 
-		elif model_type == 'BM':
-			# self.initialize_patch_model(n, frac_nomove)
-			self.load_parameters('BM')
-		elif model_type == 'vdL_PC':
-			self.load_parameters('vdL_PC')
-			# self.initialize_patch_model(n, frac_nomove)
-		elif model_type == 'vdL_MP':
-			self.load_parameters('vdL_MP')
-			# self.initialize_patch_model(n, frac_nomove)
-		elif model_type == 'vdL_MC':
-			# self.initialize_patch_model(n, frac_nomove)
-			self.load_parameters('vdL_MC')
-		elif model_type == 'vdL': # all feedbacks active 
-			self.initialize_patch_model(n, frac_nomove)
-		else:
-			print("Bad input, defaulting to Blackwood-Mumby!")
-			self.initialize_patch_model(n, frac_nomove)
-			# self.load_parameters('BM')
+		#initial conditions
+		self.ICs = ICs
 
-	
-	def initialize_patch_model(self, n, frac_nomove):
+		initialize_patch_model()
+		'''
+	def initialize_patch_model(self):
 		# do variables defined in this function only exist in the scope of this function if it is called by constructor?
 
-		frac_dispersed = (1-frac_nomove)*(1/(n)) # fraction of fish that disperse to other patches symmetrically
+		frac_dispersed = (1-self.frac_nomove)*(1/(self.n)) # fraction of fish that disperse to other patches symmetrically
 
 		# transition matrix for dispersal: element [i,j] of kP describes influx of P from j to i
-		kP = np.empty((n,n)) 
-		for i in range(n):
-			for j in range(n):
+		kP = np.empty((self.n,self.n)) 
+		for i in range(self.n):
+			for j in range(self.n):
 				kP[i][j] = frac_dispersed
 				if i == j:
-					kP[i][j] = -frac_dispersed*(n - 1)
+					kP[i][j] = -frac_dispersed*(self.n - 1)
 
-		# instead of global variables here, can we initialize these within patch system? or pass them as parameters? 
+		setattr(self,'kP', kP)
 
-		P_influx = np.empty(n)
-		P = np.empty(n) 
-		C = np.empty(n) 
-		M = np.empty(n)
-		dPs = np.empty(n)
-		dCs = np.empty(n)
-		dMs = np.empty(n)
+		# P_influx = np.empty(n) -- I think this is unnecessary 
+		setattr(self, 'P', np.empty(self.n))
+		setattr(self, 'C' , np.empty(self.n))
+		setattr(self,'M', np.empty(self.n))
+		setattr(self,'dPs', np.empty(self.n))
+		setattr(self,'dCs', np.empty(self.n))
+		setattr(self,'dMs', np.empty(self.n))
 
 		#concatenate initial condition arrays 
 		# need to define baseline values somewhere 
@@ -73,17 +61,17 @@ class Model:
 				kP[i][j] = frac_dispersed
 				if i == j:
 					kP[i][j] = -frac_dispersed*(n - 1)
-
+		setattr(self,'kP', kP)
 
 		# P_influx = np.empty(n) -- I think this is unnecessary 
-		P = np.empty(n) 
-		C = np.empty(n) 
-		Mi = np.empty(n)
-		Mv = np.empty(n)
-		dPs = np.empty(n)
-		dCs = np.empty(n)
-		dMis = np.empty(n)
-		dMvs = np.empty(n)
+		setattr(self, 'P', np.empty(self.n))
+		setattr(self, 'C' , np.empty(self.n))
+		setattr(self,'Mi', np.empty(self.n))
+		setattr(self,'Mv', np.empty(self.n))
+		setattr(self,'dPs', np.empty(self.n))
+		setattr(self,'dCs', np.empty(self.n))
+		setattr(self,'dMis', np.empty(self.n))
+		setattr(self,'dMvs', np.empty(self.n))
 
 
 		# instead of global variables, can we pass these directly to patch_system? 
@@ -93,7 +81,10 @@ class Model:
 
 
 	# this defines the system conditionally based on user input -- this is the function we pass to odeint method
-	def patch_system(X, model_type):
+	# will class formatting mess up odeint?  
+	# maybe put this outside class with Model as an arg? 
+	def patch_system(self, X, t):
+
 		P_influx = [0]*n
 
 		for i in range(n):
@@ -102,21 +93,21 @@ class Model:
 	
 			# better way to do this ?
 
-			if model_type == 'RB':
+			if self.model_type == 'RB':
 				return rass_briggs(X, i)
-			elif model_type == 'BM':
+			elif self.model_type == 'BM':
 				return blackwood(X, i)
 
-			elif model_type == 'vdL_PC':
+			elif self.model_type == 'vdL_PC':
 				return leemput(X, i)
 
-			elif model_type == 'vdL_MP':
+			elif self.model_type == 'vdL_MP':
 				return leemput(X, i)
 				
-			elif model_type == 'vdL_MC':
+			elif self.model_type == 'vdL_MC':
 				return leemput(X, i)
 				
-			elif model_type == 'vdL': # all feedbacks active 
+			elif self.model_type == 'vdL': # all feedbacks active 
 				return leemput(X, i)
 				
 			else:
@@ -126,12 +117,12 @@ class Model:
 	# returns the model run for a certain set of parameters 
 	# maybe create a subclass for a model run to separate plotting jobs ? 
 	def run_model(IC_set, t, closure_length, f, m, n, poaching):
-		sol = odeint(patch_system, IC_set, t, args = (closure_length, f/(1-m/n), m, n, poaching))
+		sol = odeint(patch_system, self.ICs, self.t, args = (closure_length, f/(1-m/self.n), m, self.n, self.poaching))
 		return sol 
 
 	# make setting for show versus save (make these optional arguments) 
 	# maybe add second way to use it by plugging in array from run_model 
-	def time_series(save, show, IC_set, t, closure_length, f, m, n, poaching):
+	def time_series(self, save, show, IC_set, t, closure_length, f, m, n, poaching):
 		if (coral_high):
 			IC_set = X2
 		else:
@@ -154,61 +145,43 @@ class Model:
 			plt.show()
 
 	# make a flag for fast or slow version 
-	def coral_recovery_map():
-		'''
-		patches = 20
+	def coral_recovery_map(self):
 
-		#heatmap of period vs m -- a bit messy right now 
-		coral_array_HI =  np.zeros(shape=(patches,patches))
-		coral_array_LO =  np.zeros(shape=(patches,patches))
-		coral_array_AVG =  np.zeros(shape=(patches,patches))
-		period_array = np.empty(patches)
-		m_array = np.empty(patches)
-		fishin = 0.35
-		n = 20
+		# slow version 
 
-		frac_nomove = 1
-		for period in range(1,patches+1):
-			print(period)
-			print(patches)
-			for m in range(patches):
-
-				initialize_patch_model(n, frac_nomove)
-				print(n, m, sep = ' ')
+		coral_array =  np.zeros(shape=(self.n,self.n))
+		
+		period_array = np.empty(n)
+		m_array = np.empty(n)
+		
+		for period in range(1,n+1):
+			for m in range(n):
 				displacer = 1/(1-m/float(n))
-				final_coral_LO = odeint(patch_system, X1, t, args = (period, displacer*float(fishin), m, n, 0))# full_output = 1)
-				#graph_sol(period*4, displacer*float(fishin), m, n, 1, False, 0)
-				#graph_sol(5, 0.45, 4, 10, 1, False, 0) -- INCONSISTENT
-				#avg1 = 0
-				avg2 = 0
-				for year in range(999- (999 % (n*period)) - 2*(n*period), 999 - (999 % (n*period))):
-					#avg1 += final_coral_HI[year][n]
-					avg2 += final_coral_LO[year][n]
-				#avg1 = avg1 / (2*(period) + 1)
-				avg2 = avg2 / (2*(period*n) + 1)
-				print(avg2)
-				print("________________________")
-				#coral_array_HI[period-1][m] = avg1
-				coral_array_LO[period-1][m] = avg2
-				#coral_array_AVG[period-1][m] = 0.5 * (avg1 + avg2)
+				final_coral = odeint(patch_system, X1, t, args = (period, displacer*float(self.f), m, self.n, 0))
+				avg = 0
+				for year in range(MAX_TIME - (MAX_TIME % (self.n*period)) - 2*(self.n*period), MAX_TIME - (MAX_TIME % (self.n*period))):
+					avg += final_coral[year][n]
+				avg = avg / (2*(period*self.n) + 1)
+				coral_array[period-1][m] = avg2
 				period_array[period-1] = period
 				m_array[m] = m
-				show_labels = False
 
-		plt.title('heatmap', fontsize = 20)
-		sb.heatmap(coral_array_LO, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
+		plt.title('coral end state', fontsize = 20)
+		sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
 		plt.ylabel('period', fontsize = 10) # x-axis label with fontsize 15
 		plt.xlabel('number of closures', fontsize = 10) # y-axis label with fontsize 15
 		plt.yticks(rotation=0)
 		plt.show()
-		'''
+
 		return None
 
 	def bistable_zone():
+
 		return None
 	def find_unstable_equilibrium():
 		return None
 	def scenario_plot():
+
 		return None 
 
 	
@@ -240,13 +213,23 @@ class Model:
 	def fishing(parrotfish, f):
 		return f/(1+math.exp(-steepness*(parrotfish-shift)))
 
+	# is self keyword necessary here ? or can we call these functions regardless?
+	# is it necessary to send X as a parameter if it is embedded in the class? 
+	# should all of these be class methods which can change self.X? 
+	def blackwood(self, X, i):
+		P, C, M = X.reshape(3, n)
 
+		dPs[i] = s*P[i]*(1 - (P[i] / (beta*self.K(C[i])))) - self.fishing(P[i], f)*P[i]*self.square_signal(t, closure_length, i, m, n, poaching)
+		dCs[i] = r*(1-M[i]-C[i])*C[i]-d*C[i] - a*M[i]*C[i] + i_C*(1-M[i]-C[i])
+		# need to define g(P)
+		dMs[i] = a*M[i]*C[i] - g(P[i])*M[i] *(1/(1-C[i])) + gamma*M[i]*(1-M[i]-C[i])+i_M*(1-M[i]-C[i])
 
-	# how to pass dPs dCs and dMs to this function? 
-	def leemput(X, i):
+		return np.concatenate((dPs, dCs, dMs), axis=0)
+
+	def leemput(self, X, i):
 		# check input 
 		P,C,M = X.reshape(3, n) # will reshaping work since we are passing arrays of length n? 
-		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / K(sigma,C[i]))) - fishing(P[i], f)*P[i] *(square_signal(t, closure_length, i, m, n, poaching))
+		dPs[i] = P_influx[i]+ s*P[i]*(1 - (P[i] / self.K(sigma,C[i]))) - self.fishing(P[i], f)*P[i] *(self.square_signal(t, closure_length, i, m, n, poaching))
 		dCs[i] = (i_C + r*C[i])*(1-M[i]-C[i])*(1-alpha*M[i]) - d*C[i]
 		
 		dMs[i] = (i_M+gamma*M[i])*(1-M[i]-C[i])-g*M[i]*P[i]/(g*eta*M[i]+1)
@@ -254,11 +237,11 @@ class Model:
 		#concatenate into 1D vector to pass to next step
 		return np.concatenate((dPs, dCs, dMs), axis=0)
 
-	def rass_briggs(X, i):
+	def rass_briggs(self, X, i):
 
 		P, C, Mv, Mi = X.reshape(4, n)
 		T = 1 - C - Mv - Mi 
-		dPdt = rH*P*(1-P/K) - fishing(P[i], f)*P[i] *(square_signal(t, closure_length, i, m, n, poaching))
+		dPdt = rH*P*(1-P/K) - self.fishing(P[i], f)*P[i] *(self.square_signal(t, closure_length, i, m, n, poaching))
 		dCdt = (phiC*T) + gTC*T*C - gamma*gTI*Mi*C - dC*C
 		dMvdt = phiM*T + rM*T*Mi + gTV*T*Mv - dV*Mv - P*Mv*Graze - omega * Mv
 		# conceptual question: why is that second term multiplied by M not Mv? 
@@ -268,7 +251,145 @@ class Model:
 		# check input
 		return None 
 
-	def load_parameters(self, model_type):
-		return None 
+	# modify this to take custom feedback parameters, or maybe custom anything? 
+	# this doesn't work for some reason
+	def load_parameters(self):
+		if self.model_type == 'vdL':
+			params = {
+			"r": 0.3,
+			"i_C" : 0.05,
+			"i_M" : 0.05,
+			"ext_C" : 0.0001,
+			"ext_P" : 0.0001,
+			"gamma" : 0.8,
+			"d" : 0.1,
+			"g" : 1,
+			"s" : 1,
+			"sigma" : .5, #strength of coral-herbivore feedback
+			"eta" : 2, #strength of algae-herbivore feedback
+			"alpha" : 0.5 #strength of algae-coral feedback 
+			}
 
-x = Model('vdL', 2, 1)
+		elif self.model_type == 'vdL_MC':
+			params = {
+			"r": 0.3,
+			"i_C" : 0.05,
+			"i_M" : 0.05,
+			"ext_C" : 0.0001,
+			"ext_P" : 0.0001,
+			"gamma" : 0.8,
+			"d" : 0.1,
+			"g" : 1,
+			"s" : 1,
+			"sigma" : 0, #strength of coral-herbivore feedback
+			"eta" : 0, #strength of algae-herbivore feedback
+			"alpha" : 0.5 #strength of algae-coral feedback 
+			}
+
+		elif self.model_type == 'vdL_MP':
+			params = {
+			"r": 0.3,
+			"i_C" : 0.05,
+			"i_M" : 0.05,
+			"ext_C" : 0.0001,
+			"ext_P" : 0.0001,
+			"gamma" : 0.8,
+			"d" : 0.1,
+			"g" : 1,
+			"s" : 1,
+			"sigma" : 0, #strength of coral-herbivore feedback
+			"eta" : 2, #strength of algae-herbivore feedback
+			"alpha" : 0 #strength of algae-coral feedback 
+			}
+
+		elif self.model_type == 'vdL_PC':
+			params = {
+			"r": 0.3,
+			"i_C" : 0.05,
+			"i_M" : 0.05,
+			"ext_C" : 0.0001,
+			"ext_P" : 0.0001,
+			"gamma" : 0.8,
+			"d" : 0.1,
+			"g" : 1,
+			"s" : 1,
+			"sigma" : .5, #strength of coral-herbivore feedback
+			"eta" : 0, #strength of algae-herbivore feedback
+			"alpha" : 0 #strength of algae-coral feedback 
+			}
+
+		elif self.model_type == 'BM':
+			params = {
+			"gamma" : 0.8,
+			"beta" : 1,
+			"alpha" : 1,
+			"s" : 0.49,
+			"r" : 1,
+			"d" : 0.44,
+			"a" : 0.1,
+			"i_C" : 0.05,
+			"i_M" : 0.05,
+			"P0" : 0.1,
+			"C_HI" : .4,
+			"M_LO" : .04,
+			"C_LO" : .04,
+			"M_HI" : .4}
+
+		elif self.model_type == 'RB':
+			params = {
+			"phiC" : 0.001, #open recruitment of coral
+			"phiM" : 0.0001, #open recruitment of macroalgae
+
+			"rM" : 0.5, #production of vulnerable macroalgae from invulnerable stage"
+
+			#growth rates
+			"gTC" : 0.1, #combined rate of growth and local recruitment of corals over free space 
+			"gTV" : 0.2, #growth rate of vulnerable macroalgae over free space 
+			"gTI" : 0.4, #growth rate of invulnerable macroalgae over free space 
+			"rH" : 0.49,
+
+			"gamma" : 0.4, #growth of macroalgae over coral vs free space
+			"omega" : 2, #maturation rate of macroalgae from vulnerable to invulnerable class "
+
+			#death rates
+			"dC" : 0.5, #death rate of coral 
+			"dI" : 0.4, #death rate of invulnerable macroalgae
+			"dV" : 0.58, #death rate of vulnerable macroalgae per unit biomass of herbivores "
+
+			"K" : 20,
+			"Graze" : 0.58,
+
+			#reference points  
+			"C_max" : .509, # coral cover with no fishing
+			"P_max" : 20, # parrotfish with no fishing
+			"M_max" : .466, # algal cover with really high fishing - note this is Mi only
+			"f_crit" : .275 # highest fishing at which coral wins (regardless of initial)
+			}
+
+		for name, val in params.items():
+			# initialize a new variable within class with that parameter's name and value 
+			# there is probably a less hacky way to do this, but i aint got time to find it
+			#exec(f"{name} = {val}", globals())
+			setattr(self, name, val)
+
+	# test accessor
+	def get_M(self):
+		return self.M
+
+def main():
+	x = Model('RB', 2, 1)
+	y = Model('vdL', 10, 0.97)
+	print(x.model_type)
+	print(y.model_type)
+	x.load_parameters()
+	y.load_parameters()
+	x.initialize_patch_model()
+	y.initialize_patch_model()
+	print(y.gamma)
+	print(y.get_M())
+	# print(x.run_model(parameter list))
+	# x.time_series(parameter list, show = True)
+	return 
+
+if __name__ == '__main__':
+	main()
