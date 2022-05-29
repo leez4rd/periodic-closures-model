@@ -54,13 +54,13 @@ class Model:
 		setattr(self, 'state_vec', [self.P,self.C,self.M])
 		# concatenate initial condition arrays 
 		# need to define baseline values somewhere
-		# should these be attributes ?  
+		# should these be attributes ?
 		setattr(self, 'X1', [P0]*self.n + [C0L]*self.n + [M0H]*self.n)
-		setattr(self, 'X2', [P0]*self.n + [C0H]*self.n + [M0L]*self.n)
-
+		setattr(self, 'X2', [P0]*self.n + [C0H]*self.n + [M0L]*self.n)  
+		
 	# rass briggs model is only one with different state variables, so just have a separate init function 
 	# better way might be to give initialize... an optional argument 
-	def RB_initialize_patch_model(n, frac_nomove):
+	def RB_initialize_patch_model(n, frac_nomove, P0, C0L, C0H, M0vH, M0vL, M0iH, M0iL):
 
 		frac_dispersed = (1-frac_nomove)*(1/(n)) # fraction of fish that disperse to other patches symmetrically
 		# transition matrix for dispersal: element [i,j] of kP describes influx of P from j to i
@@ -86,50 +86,9 @@ class Model:
 		# concatenate initial condition arrays -- amend to match state vec
 		# X1 = [P0]*n + [C0L]*n + [M0H]*n 
 		# X2 = [P0]*n + [C0H]*n + [M0L]*n
+		setattr(self, 'X1', [P0]*self.n + [C0L]*self.n + [M0vH]*self.n + [M0iH]*self.n)
+		setattr(self, 'X2', [P0]*self.n + [C0H]*self.n + [M0vL]*self.n + [M0iL]*self.n)
 
-
-	# this defines the system conditionally based on user input -- this is the function we pass to odeint method
-	# will class formatting mess up odeint?  
-	# maybe put this outside class with Model as an arg? 
-
-	'''
-	def patch_system(self):
-
-		P_influx = [0]*n
-
-		for i in range(n):
-			for j in range(n):
-				P_influx[i] += (kP[i][j]) *P[j]  
-	
-			# better way to do this ?
-
-			if self.model_type == 'RB':
-				X = [self.P, self.C, self.Mv, Mi]
-				return rass_briggs(X, i)
-			elif self.model_type == 'BM':
-				X = [self.P, self.C, self.M]
-				return blackwood(X, i)
-			elif self.model_type == 'vdL_PC':
-				X = [self.P, self.C, self.M]
-				return leemput(X, i)
-
-			elif self.model_type == 'vdL_MP':
-				X = [self.P, self.C, self.M]
-				return leemput(X, i)
-				
-			elif self.model_type == 'vdL_MC':
-				X = [self.P, self.C, self.M]
-				return leemput(X, i)
-				
-			elif self.model_type == 'vdL': # all feedbacks active 
-				X = [self.P, self.C, self.M]
-				return leemput(X, i)
-				
-			else:
-				print("Bad input, defaulting to Blackwood-Mumby!")
-				X = [self.P, self.C, self.M]
-				return blackwood(X, i)
-	'''
 
 	# returns the model run for a certain set of parameters 
 	# maybe create a subclass for a model run to separate plotting jobs ? 
@@ -140,23 +99,22 @@ class Model:
 
 	# make setting for show versus save (make these optional arguments) 
 	# maybe add second way to use it by plugging in array from run_model 
-	def time_series(self, save, show, IC_set, t, closure_length, f, m, n, poaching):
-		if (coral_high):
-			IC_set = X2
-		else:
-			IC_set = X1
+	def time_series(self, IC_set, t, save, show):
+
 		plt.figure()
-		sol = odeint(self.patch_system(model_type), IC_set, t, args = (closure_length, f/(1-m/n), m, n, poaching))
-		print(sol[:, n:2*n])
-		patch_num = [x for x in range(1,n+1)]
-		for i in range(len(patch_num)):
-			plt.plot(sol[:, n+i],  label = 'patch % d'% patch_num[i])
-		plt.xlabel('time')
-		plt.ylabel('abundance')
-		plt.title('spatial model')
+		sol = odeint(patch_system, IC_set, t, args = (self, ))
+		patch_num = [x for x in range(1, self.n+1)]
+
+
+		for i in range(self.n):
+			plt.plot(sol[:, self.n+i],  label = 'patch % d'% i)
+
+		plt.xlabel('Time')
+		plt.ylabel('Coral Cover')
+		plt.title('Spatial model')
 		plt.legend(loc=0)
-		txt="parameters" + "\nfishing when open: " + str(f/(1-m/n)) + "\npercent closure: " + str(m/n) +"\nclosure time: " + str(closure_length)
-		plt.figtext(0.3, .31, txt, wrap=True, fontsize=8)
+		txt="parameters" + "\nfishing when open: " + str(self.f/(1-self.m/self.n)) + "\npercent closure: " + str(self.m/self.n) +"\nclosure time: " + str(self.closure_length)
+		plt.figtext(0.7, .31, txt, wrap=True, fontsize=8)
 		if save:
 			plt.savefig('model_time_series1.jpg')
 		if show:
@@ -242,12 +200,7 @@ class Model:
 			"s" : 1,
 			"sigma" : 0, #strength of coral-herbivore feedback
 			"eta" : 0, #strength of algae-herbivore feedback
-			"alpha" : 0.5, #strength of algae-coral feedback 
-			"P0" : 0.1,
-			"C_HI" : .4,
-			"M_LO" : .04,
-			"C_LO" : .04,
-			"M_HI" : .4
+			"alpha" : 0.5 #strength of algae-coral feedback 
 			}
 
 		elif self.model_type == 'vdL_MP':
@@ -263,12 +216,7 @@ class Model:
 			"s" : 1,
 			"sigma" : 0, #strength of coral-herbivore feedback
 			"eta" : 2, #strength of algae-herbivore feedback
-			"alpha" : 0, #strength of algae-coral feedback 
-			"P0" : 0.1,
-			"C_HI" : .4,
-			"M_LO" : .04,
-			"C_LO" : .04,
-			"M_HI" : .4
+			"alpha" : 0 #strength of algae-coral feedback 
 			}
 
 		elif self.model_type == 'vdL_PC':
@@ -285,11 +233,6 @@ class Model:
 			"sigma" : .5, #strength of coral-herbivore feedback
 			"eta" : 0, #strength of algae-herbivore feedback
 			"alpha" : 0, #strength of algae-coral feedback 
-			"P0" : 0.1,
-			"C_HI" : .4,
-			"M_LO" : .04,
-			"C_LO" : .04,
-			"M_HI" : .4
 			}
 
 		elif self.model_type == 'BM':
@@ -302,12 +245,8 @@ class Model:
 			"d" : 0.44,
 			"a" : 0.1,
 			"i_C" : 0.05,
-			"i_M" : 0.05,
-			"P0" : 0.1,
-			"C_HI" : .4,
-			"M_LO" : .04,
-			"C_LO" : .04,
-			"M_HI" : .4}
+			"i_M" : 0.05
+			}
 
 		elif self.model_type == 'RB':
 			params = {
@@ -331,24 +270,13 @@ class Model:
 			"dV" : 0.58, #death rate of vulnerable macroalgae per unit biomass of herbivores "
 
 			"K" : 20,
-			"Graze" : 0.58,
-
-			#reference points  
-			"C_max" : .509, # coral cover with no fishing
-			"P_max" : 20, # parrotfish with no fishing
-			"M_max" : .466, # algal cover with really high fishing - note this is Mi only
-			"f_crit" : .275, # highest fishing at which coral wins (regardless of initial)
-			"P0" : 0.1,
-			"C_HI" : .4,
-			"M_LO" : .04,
-			"C_LO" : .04,
-			"M_HI" : .4
+			"Graze" : 0.58
 			}
 
 		for name, val in params.items():
 			# initialize a new variable within class with that parameter's name and value 
 			# there is probably a less hacky way to do this, but i aint got time to find it
-			#exec(f"{name} = {val}", globals())
+			# exec(f"{name} = {val}", globals())
 			setattr(self, name, val)
 
 	# management parameter setter 
@@ -358,10 +286,6 @@ class Model:
 		self.m = m
 		self.poaching = poaching 
 
-	# test accessor
-	def get_M(self):
-		return self.M
-
 
 
 # puttin patch system outside the class so we don't have to pass self as first parameter 
@@ -369,42 +293,73 @@ class Model:
 # don't necessarily need outside class, just can't modify object...
 # how could we bundle all of this into a library (ie import periodic_closures_modeltools) ? 
 
+
+# BUG: only the first patch is being simulated? 
 def patch_system(X, t, system_model):
 		P_influx = [0]*system_model.n
 
+ 
 		for i in range(system_model.n):
 			for j in range(system_model.n):
 				P_influx[i] += (system_model.kP[i][j]) * system_model.P[j]  
 	
-			# better way to do this ?
-
+			# this could be structured more nicely
 			if system_model.model_type == 'RB':
 				
-				return rass_briggs(X, i, system_model)
+				results = rass_briggs(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMvs[i] = results[2]
+				system_model.dMis[i] = results[3]
+
 			elif system_model.model_type == 'BM':
 				
-				return blackwood(X, i, system_model)
+				results = blackwood(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
+
 			elif system_model.model_type == 'vdL_PC':
 				
-				return leemput(X, i, system_model)
+				results = leemput(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
 
 			elif system_model.model_type == 'vdL_MP':
-				
-				return leemput(X, i, system_model)
-				
+				results = leemput(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
+
 			elif system_model.model_type == 'vdL_MC':
 				
-				return leemput(X, i, system_model)
-				
+				results = leemput(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
+
 			elif system_model.model_type == 'vdL': # all feedbacks active 
 				
-				return leemput(X, t, i, system_model, P_influx)
+				results = leemput(X, t, i, system_model, P_influx)
+				print(leemput(X, t, i, system_model, P_influx))
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
 				
 			else:
 				print("Bad input, defaulting to Blackwood-Mumby!")
-				return blackwood(X, i, system_model)
+				results = blackwood(X, i, system_model)
+				system_model.dPs[i] = results[0]
+				system_model.dCs[i] = results[1]
+				system_model.dMs[i] = results[2]
 
-def rass_briggs(X, i, system_model):
+		if system_model.model_type == 'RB':
+			return np.concatenate((system_model.dPs, system_model.dCs, system_model.dMvs, system_model.dMis), axis = 0)
+		else:
+			return np.concatenate((system_model.dPs, system_model.dCs, system_model.dMs), axis = 0)
+
+def rass_briggs(X, t, i, system_model, P_influx):
 
 		P, C, Mv, Mi = X.reshape(4, n)
 		T = 1 - C - Mv - Mi 
@@ -443,16 +398,16 @@ def sigmoid_signal(t, period, p):
 	else:
 		return 1.0 / (1 + math.exp(-(t % period - p * period)))
 
-# idk
+# fishing density dependence 
 def fishing(parrotfish, f):
-	steepness = 0.1
-	shift = -10
+	steepness = 25
+	shift = 0.2
 	return f/(1+math.exp(-steepness*(parrotfish-shift)))
 
 # is self keyword necessary here ? or can we call these functions regardless?
 # is it necessary to send X as a parameter if it is embedded in the class? 
 # should all of these be class methods which can change self.X? 
-def blackwood(X, i, system_model):
+def blackwood(X, t, i, system_model, P_influx):
 	P, C, M = X.reshape(3, n)
 
 	dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.fishing(P[i], f)*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
@@ -466,13 +421,15 @@ def blackwood(X, i, system_model):
 def leemput(X, t, i, system_model, P_influx): # COPY THIS FORMAT FOR OTHER MODELS 
 	# check input 
 	P,C,M = X.reshape(3, system_model.n) # will reshaping work since we are passing arrays of length n? 
-	system_model.dPs[i] = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
-	system_model.dCs[i] = (system_model.i_C + system_model.r*C[i])*(1-M[i]-C[i])*(1-system_model.alpha*M[i]) - system_model.d*C[i]
+	blep = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	# print(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	blop = (system_model.i_C + system_model.r*C[i])*(1-M[i]-C[i])*(1-system_model.alpha*M[i]) - system_model.d*C[i]
 	
-	system_model.dMs[i] = (system_model.i_M+system_model.gamma*M[i])*(1-M[i]-C[i])-system_model.g*M[i]*P[i]/(system_model.g*system_model.eta*M[i]+1)
-
-	#concatenate into 1D vector to pass to next step
-	return np.concatenate((system_model.dPs, system_model.dCs, system_model.dMs), axis=0)
+	bleep = (system_model.i_M+system_model.gamma*M[i])*(1-M[i]-C[i])-system_model.g*M[i]*P[i]/(system_model.g*system_model.eta*M[i]+1)
+	return [blep, blop, bleep]
+	# NEED TO CHANGE OTHER FUNCTIONS TO MATCH BLEP BLOP BLEEP METHOD
+	# concatenate into 1D vector to pass to next step
+	# return np.concatenate((blep, blop, bleep), axis=0)
 
 
 def main():
@@ -480,24 +437,29 @@ def main():
 	
 	yrs = 1000 #total amount of time
 	t = np.linspace(0, yrs, yrs) #timestep array -- same number of timesteps as years 
-	P0, C0L, C0H, M0L, M0H = 0.1, 0.04, 0.4, 0.04, 0.4
+	P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
 
+	# create Model objects
 	x = Model('vdL', 2, 1)
 	y = Model('vdL', 10, 0.97)
 
-	print(x.model_type)
-	print(y.model_type)
-
+	# load Model parameters according to model type
 	x.load_parameters()
 	y.load_parameters()
 
+	# set initial conditions 
 	x.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 
-	print(y.gamma)
-	print(y.get_M())
-	x.set_mgmt_params(20, 0.25, 1, 0)
+	
+
+	x.set_mgmt_params(20, 0.1, 1, 0) # set management parameters -- closure length, fishing effort, # of closures, poaching 
 	print(x.run_model(x.X1, t)) # IT WORKED !!!!!!
+	x.time_series(x.X1, t, False, True) 
+
+	x.set_mgmt_params(40, 0.4, 1, 0.5)
+	x.time_series(x.X1, t, False, True)
+
 	# print(x.run_model(parameter list))
 	# x.time_series(parameter list, show = True)
 
