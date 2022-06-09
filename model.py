@@ -2,6 +2,11 @@ import numpy as np
 from scipy.integrate import odeint  
 import matplotlib.pyplot as plt 
 import math
+import seaborn as sb
+import multiprocessing as mp 
+from joblib import Parallel, delayed
+
+
 
 class Model:
 	
@@ -120,34 +125,66 @@ class Model:
 		if show:
 			plt.show()
 
-	# make a flag for fast or slow version 
-	def coral_recovery_map(self):
+	# make a flag for fast or slow version -- also consider making nonspatial for faster runtime 
+	# note that resolution is determined by the previously initialized patch number for spatial heatmaps
+	def coral_recovery_map(self, t, fishing_intensity):
 
 		# slow version 
+		IC_set = self.X1 	# default to coral-rare 
+		MAX_TIME = len(t) # last year in the model run 
 
-		coral_array =  np.zeros(shape=(self.n,self.n))
+		coral_array =  np.zeros(shape=(self.n,self.n)) # array of long-term coral averages
+		CL_array = np.empty(self.n) # array of closure lenghts 
+		m_array = np.empty(self.n)  # array of number of closures 
 		
-		period_array = np.empty(n)
-		m_array = np.empty(n)
-		
-		for period in range(1,n+1):
-			for m in range(n):
-				displacer = 1/(1-m/float(n))
-				final_coral = odeint(patch_system, X1, t, args = (period, displacer*float(self.f), m, self.n, 0))
+		# iterate over all scenarios 
+		for closure_length in range(1,self.n+1):
+			for m in range(self.n):
+				# set management parameters for this run 
+				self.set_mgmt_params(closure_length, fishing_intensity, m, self.poaching)
+
+				# solve ODE system 
+				sol = odeint(patch_system, IC_set, t, args = (self, ))
+				# average over coral cover of last two full rotations for a single patch (assumes symmetry, may fix that)
 				avg = 0
-				for year in range(MAX_TIME - (MAX_TIME % (self.n*period)) - 2*(self.n*period), MAX_TIME - (MAX_TIME % (self.n*period))):
-					avg += final_coral[year][n]
-				avg = avg / (2*(period*self.n) + 1)
-				coral_array[period-1][m] = avg2
-				period_array[period-1] = period
-				m_array[m] = m
 
-		plt.title('coral end state', fontsize = 20)
-		sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "viridis", annot = show_labels) #YlGnBu for original color scheme
-		plt.ylabel('period', fontsize = 10) # x-axis label with fontsize 15
-		plt.xlabel('number of closures', fontsize = 10) # y-axis label with fontsize 15
+				for year in range(MAX_TIME - (MAX_TIME % (self.n*closure_length)) - 2*(self.n*closure_length), 
+				MAX_TIME - (MAX_TIME % (self.n*closure_length))):
+					avg += sol[year][self.n]
+				
+				avg = avg / (2*(self.n*closure_length) + 1)
+				print("Average coral cover for closure length: ", 3*closure_length, " and closure num: ", m)
+				print(avg)
+				coral_array[closure_length-1][m] = avg
+				CL_array[closure_length-1] = closure_length
+				m_array[m] = m
+		plt.figure()
+		plt.title('Long-term outcomes for coral', fontsize = 20)
+		f = lambda y:y
+		new_labels = [f(y) for y in range(1, self.n+1)]
+		ax = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "Spectral", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
+		ax.invert_yaxis()
+		plt.ylabel('Closure length in years', fontsize = 10) # x-axis label with fontsize 15
+		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15
+		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
 		plt.yticks(rotation=0)
+		'''
+		ps  = np.linspace(0,1,100)
+		func = lambda x: 50.476/(x+0.0000001)
+		y  = [func(val) for val in ps] 
+		ax= plt.plot(ps, y, color = "red")
+		plt.title("tau as a function of p at threshold")
+		plt.xlabel("fraction closed")
+		plt.ylabel("period in years")
+
+		plt.xlim([0,1])
+		plt.ylim([0, 100*5+1])
 		plt.show()
+		'''
+		name = 'longtermcoral_fishing_' + str(fishing_intensity) + '_' + str(self.n) + '.jpg'
+		plt.savefig(name)
+		plt.close()
+		# plt.show()
 
 		return None
 
@@ -342,7 +379,7 @@ def patch_system(X, t, system_model):
 			elif system_model.model_type == 'vdL': # all feedbacks active 
 				
 				results = leemput(X, t, i, system_model, P_influx)
-				print(leemput(X, t, i, system_model, P_influx))
+				# print(leemput(X, t, i, system_model, P_influx))
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
@@ -410,7 +447,8 @@ def fishing(parrotfish, f):
 def blackwood(X, t, i, system_model, P_influx):
 	P, C, M = X.reshape(3, n)
 
-	dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.fishing(P[i], f)*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
+	# dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.fishing(P[i], f)*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
+	dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.f*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
 	dCs[i] = r*(1-M[i]-C[i])*C[i]-d*C[i] - a*M[i]*C[i] + i_C*(1-M[i]-C[i])
 	# need to define g(P) before this model is used 
 	dMs[i] = a*M[i]*C[i] - g(P[i])*M[i] *(1/(1-C[i])) + gamma*M[i]*(1-M[i]-C[i])+i_M*(1-M[i]-C[i])
@@ -421,7 +459,9 @@ def blackwood(X, t, i, system_model, P_influx):
 def leemput(X, t, i, system_model, P_influx): # COPY THIS FORMAT FOR OTHER MODELS 
 	# check input 
 	P,C,M = X.reshape(3, system_model.n) # will reshaping work since we are passing arrays of length n? 
-	blep = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	# blep = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	blep = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	# print(P_influx)
 	# print(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
 	blop = (system_model.i_C + system_model.r*C[i])*(1-M[i]-C[i])*(1-system_model.alpha*M[i]) - system_model.d*C[i]
 	
@@ -441,8 +481,9 @@ def main():
 
 	# create Model objects
 	x = Model('vdL', 2, 1)
-	y = Model('vdL', 10, 0.97)
-
+	y = Model('vdL',5,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
+	z = Model('vdL', 20, 1)
+	
 	# load Model parameters according to model type
 	x.load_parameters()
 	y.load_parameters()
@@ -450,16 +491,31 @@ def main():
 	# set initial conditions 
 	x.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+	z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+	z.load_parameters() # do this inside initializer
+	# y.set_mgmt_params(20, 0.24, 1, 0)
+	# y.time_series(y.X1, t, False, True)
+	# x.set_mgmt_params(20, 0.1, 1, 0) # set management parameters -- closure length, fishing effort, # of closures, poaching 
+	# print(x.run_model(x.X1, t)) # IT WORKED !!!!!!
+	# x.time_series(x.X1, t, False, True) 
 
+	# x.set_mgmt_params(40, 0.4, 1, 0.5)
+	# x.time_series(x.X1, t, False, True)
+	'''
+	x.coral_recovery_map(t, 0.2)
+	x.coral_recovery_map(t, 0.4)
+	x.coral_recovery_map(t, 0.6)
+	y.set_mgmt_params(40, 0.4, 1, 0)
+	y.coral_recovery_map(t, 0.15)
+	y.coral_recovery_map(t, 0.20)
+	y.coral_recovery_map(t, 0.25)
+	y.coral_recovery_map(t, 0.30)
+	'''
+	y.coral_recovery_map(t, 0.25)
+	y.coral_recovery_map(t, 0.35)
+	z.coral_recovery_map(t, 0.25)
+	z.coral_recovery_map(t, 0.35)
 	
-
-	x.set_mgmt_params(20, 0.1, 1, 0) # set management parameters -- closure length, fishing effort, # of closures, poaching 
-	print(x.run_model(x.X1, t)) # IT WORKED !!!!!!
-	x.time_series(x.X1, t, False, True) 
-
-	x.set_mgmt_params(40, 0.4, 1, 0.5)
-	x.time_series(x.X1, t, False, True)
-
 	# print(x.run_model(parameter list))
 	# x.time_series(parameter list, show = True)
 
