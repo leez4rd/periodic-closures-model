@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import math
 import seaborn as sb
 import multiprocessing as mp 
+from joblib import Parallel, delayed
+
+
 
 class Model:
 	
@@ -138,7 +141,7 @@ class Model:
 		for closure_length in range(1,self.n+1):
 			for m in range(self.n):
 				# set management parameters for this run 
-				self.set_mgmt_params(10*closure_length, fishing_intensity, m, self.poaching)
+				self.set_mgmt_params(closure_length, fishing_intensity, m, self.poaching)
 
 				# solve ODE system 
 				sol = odeint(patch_system, IC_set, t, args = (self, ))
@@ -149,18 +152,39 @@ class Model:
 				MAX_TIME - (MAX_TIME % (self.n*closure_length))):
 					avg += sol[year][self.n]
 				
-				avg = avg / (2*(closure_length*self.n) + 1)
-
+				avg = avg / (2*(self.n*closure_length) + 1)
+				print("Average coral cover for closure length: ", 3*closure_length, " and closure num: ", m)
+				print(avg)
 				coral_array[closure_length-1][m] = avg
-				CL_array[closure_length-1] = 10*closure_length
+				CL_array[closure_length-1] = closure_length
 				m_array[m] = m
-
+		plt.figure()
 		plt.title('Long-term outcomes for coral', fontsize = 20)
-		sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "viridis") #YlGnBu for original color scheme
+		f = lambda y:y
+		new_labels = [f(y) for y in range(1, self.n+1)]
+		ax = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "Spectral", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
+		ax.invert_yaxis()
 		plt.ylabel('Closure length in years', fontsize = 10) # x-axis label with fontsize 15
 		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15
+		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
 		plt.yticks(rotation=0)
+		'''
+		ps  = np.linspace(0,1,100)
+		func = lambda x: 50.476/(x+0.0000001)
+		y  = [func(val) for val in ps] 
+		ax= plt.plot(ps, y, color = "red")
+		plt.title("tau as a function of p at threshold")
+		plt.xlabel("fraction closed")
+		plt.ylabel("period in years")
+
+		plt.xlim([0,1])
+		plt.ylim([0, 100*5+1])
 		plt.show()
+		'''
+		name = 'longtermcoral_fishing_' + str(fishing_intensity) + '_' + str(self.n) + '.jpg'
+		plt.savefig(name)
+		plt.close()
+		# plt.show()
 
 		return None
 
@@ -457,8 +481,9 @@ def main():
 
 	# create Model objects
 	x = Model('vdL', 2, 1)
-	y = Model('vdL', 8, 1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
-
+	y = Model('vdL',5,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
+	z = Model('vdL', 20, 1)
+	
 	# load Model parameters according to model type
 	x.load_parameters()
 	y.load_parameters()
@@ -466,7 +491,8 @@ def main():
 	# set initial conditions 
 	x.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
-
+	z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+	z.load_parameters() # do this inside initializer
 	# y.set_mgmt_params(20, 0.24, 1, 0)
 	# y.time_series(y.X1, t, False, True)
 	# x.set_mgmt_params(20, 0.1, 1, 0) # set management parameters -- closure length, fishing effort, # of closures, poaching 
@@ -475,7 +501,21 @@ def main():
 
 	# x.set_mgmt_params(40, 0.4, 1, 0.5)
 	# x.time_series(x.X1, t, False, True)
+	'''
+	x.coral_recovery_map(t, 0.2)
+	x.coral_recovery_map(t, 0.4)
+	x.coral_recovery_map(t, 0.6)
+	y.set_mgmt_params(40, 0.4, 1, 0)
+	y.coral_recovery_map(t, 0.15)
+	y.coral_recovery_map(t, 0.20)
 	y.coral_recovery_map(t, 0.25)
+	y.coral_recovery_map(t, 0.30)
+	'''
+	y.coral_recovery_map(t, 0.25)
+	y.coral_recovery_map(t, 0.35)
+	z.coral_recovery_map(t, 0.25)
+	z.coral_recovery_map(t, 0.35)
+	
 	# print(x.run_model(parameter list))
 	# x.time_series(parameter list, show = True)
 
