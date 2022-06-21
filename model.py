@@ -133,13 +133,13 @@ class Model:
 		IC_set = self.X1 	# default to coral-rare 
 		MAX_TIME = len(t) # last year in the model run 
 
-		coral_array =  np.zeros(shape=(self.n,self.n)) # array of long-term coral averages
-		CL_array = np.empty(self.n) # array of closure lenghts 
-		m_array = np.empty(self.n)  # array of number of closures 
-		
-		# iterate over all scenarios 
-		for closure_length in range(1,self.n+1):
-			for m in range(self.n):
+		coral_array =  np.zeros(shape=(int(0.75*self.n+1), int(self.n / 2))) # array of long-term coral averages
+		# CL_array = np.empty(int(0.75*self.n+1)) # array of closure lenghts 
+		# m_array = np.empty(int(self.n / 2))  # array of number of closures 
+		print(int(self.n / 2))
+		# iterate over  all scenarios 
+		for closure_length in range(1,int(0.75*self.n+1)):
+			for m in range(int(self.n / 2)):
 				# set management parameters for this run 
 				self.set_mgmt_params(closure_length, fishing_intensity, m, self.poaching)
 
@@ -148,24 +148,26 @@ class Model:
 				# average over coral cover of last two full rotations for a single patch (assumes symmetry, may fix that)
 				avg = 0
 
-				for year in range(MAX_TIME - (MAX_TIME % (self.n*closure_length)) - 2*(self.n*closure_length), 
-				MAX_TIME - (MAX_TIME % (self.n*closure_length))):
+				# dealing with very large period / millennium ratio
+				
+				for year in range(MAX_TIME - (MAX_TIME % (self.n*closure_length)) - (self.n*closure_length), 
+					MAX_TIME - (MAX_TIME % (self.n*closure_length))):
 					avg += sol[year][self.n]
 				
-				avg = avg / (2*(self.n*closure_length) + 1)
-				print("Average coral cover for closure length: ", 3*closure_length, " and closure num: ", m)
+				avg = avg / ((self.n*closure_length) + 1)
+				print("Average coral cover for closure length: ", closure_length, " and closure num: ", m)
 				print(avg)
 				coral_array[closure_length-1][m] = avg
-				CL_array[closure_length-1] = closure_length
-				m_array[m] = m
+				# CL_array[closure_length-1] = closure_length -- don't think this is necessary 
+				# m_array[m] = m
 		plt.figure()
 		plt.title('Long-term outcomes for coral', fontsize = 20)
-		f = lambda y:y
+		f = lambda y:self.n*y
 		new_labels = [f(y) for y in range(1, self.n+1)]
-		ax = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "Spectral", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
+		ax = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "mako", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
 		ax.invert_yaxis()
-		plt.ylabel('Closure length in years', fontsize = 10) # x-axis label with fontsize 15
-		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15
+		plt.ylabel('Period in years', fontsize = 10) # x-axis label with fontsize 15
+		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15q
 		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
 		plt.yticks(rotation=0)
 		'''
@@ -193,7 +195,47 @@ class Model:
 		return None
 	def find_unstable_equilibrium():
 		return None
-	def scenario_plot():
+	def scenario_plot(self, t, fishing_intensity, IC_set):
+
+		final_coral = np.empty(self.n)
+		ms = np.empty(self.n)
+		periods = [5, 10, 20, 50, 100]  # parametrize in terms of coral growth time? 
+		# there is a cooler way to do colors than this 
+		color_sequence = {5: '#1f77b4', 10: '#aec7e8', 20: '#ff7f0e', 50:'#ffbb78', 100:'#2ca02c'}
+
+		MAX_TIME = len(t)
+		
+
+		for period in periods:
+			print(period)
+			for m in range(self.n):
+				print(m)
+
+				# set management parameters for this run 
+				self.set_mgmt_params(period / self.n, fishing_intensity, m, self.poaching)
+
+				# solve ODE system 
+				sol = odeint(patch_system, IC_set, t, args = (self, ))
+
+				avg = 0
+
+				# truncate to last full period, then average over that period 
+				for year in range(MAX_TIME - MAX_TIME % period - period, MAX_TIME - MAX_TIME % period):
+					avg += sol[year][self.n] # only looking at one patch here
+					# may amend to average over all patches for comparison with MPA 
+				
+				avg = avg / (period + 1)
+				final_coral[m] = avg
+				print(avg)
+				ms[m] = m
+
+			# plot result for this period
+			plt.xlabel('Number of closures')
+			plt.ylabel('Coral Cover')
+			plt.title('Final coral state across closure scenarios')
+			plt.legend(loc=0)
+			plt.plot(ms, final_coral, label = 'period = %d' % period, color = color_sequence[period])
+		plt.show()
 
 		return None 
 
@@ -511,6 +553,10 @@ def main():
 	y.coral_recovery_map(t, 0.25)
 	y.coral_recovery_map(t, 0.30)
 	'''
+	ICs = y.X1 
+	y.scenario_plot(t, 0.25, ICs)
+
+
 	y.coral_recovery_map(t, 0.25)
 	y.coral_recovery_map(t, 0.35)
 	z.coral_recovery_map(t, 0.25)
