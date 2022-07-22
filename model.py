@@ -112,14 +112,17 @@ class Model:
 
 
 		for i in range(self.n):
-			plt.plot(sol[:, self.n+i],  label = 'patch % d'% i)
+			plt.plot(sol[:, self.n+i],  label = 'patch % d'% (int(i) + 1))
 
 		plt.xlabel('Time')
 		plt.ylabel('Coral Cover')
 		plt.title('Spatial model')
 		plt.legend(loc=0)
+		ax = plt.gca()
+		ax.set_xlim([0, 500])
+		ax.set_ylim([0, 1])
 		txt="parameters" + "\nfishing when open: " + str(self.f/(1-self.m/self.n)) + "\npercent closure: " + str(self.m/self.n) +"\nclosure time: " + str(self.closure_length)
-		plt.figtext(0.7, .31, txt, wrap=True, fontsize=8)
+		# plt.figtext(0.7, .31, txt, wrap=True, fontsize=8)
 		if save:
 			plt.savefig('model_time_series1.jpg')
 		if show:
@@ -133,13 +136,13 @@ class Model:
 		IC_set = self.X1 	# default to coral-rare 
 		MAX_TIME = len(t) # last year in the model run 
 
-		coral_array =  np.zeros(shape=(int(self.n), int(self.n))) # array of long-term coral averages
+		coral_array =  np.zeros(shape=(self.n, self.n)) # array of long-term coral averages
 		# CL_array = np.empty(int(0.75*self.n+1)) # array of closure lenghts 
 		# m_array = np.empty(int(self.n / 2))  # array of number of closures 
-		print(int(self.n / 2))
+
 		# iterate over  all scenarios 
-		for closure_length in range(1,int(self.n)):
-			for m in range(int(self.n)):
+		for closure_length in range(1,self.n):
+			for m in range(self.n):
 				# set management parameters for this run 
 				self.set_mgmt_params(closure_length, fishing_intensity, m, self.poaching)
 
@@ -164,7 +167,7 @@ class Model:
 		
 		# axes = plot.axes(projection='3d')
 		# axes.plot_surface(X1, Y1, Z1)
-		plot.show()
+		# plt.show()
 		plt.title('Long-term outcomes for coral', fontsize = 20)
 		f = lambda y:self.n*y
 		new_labels = [f(y) for y in range(1, self.n+1)]
@@ -174,6 +177,7 @@ class Model:
 		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15q
 		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
 		plt.yticks(rotation=0)
+		plt.show()
 		'''
 		ps  = np.linspace(0,1,100)
 		func = lambda x: 50.476/(x+0.0000001)
@@ -188,7 +192,7 @@ class Model:
 		plt.show()
 		'''
 		name = 'longtermcoral_fishing_' + str(fishing_intensity) + '_' + str(self.n) + '.jpg'
-		plt.savefig(name)
+		# plt.savefig(name)
 		plt.close()
 		# plt.show()
 
@@ -611,9 +615,9 @@ def main():
 	P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
 
 	# create Model objects
-	x = Model('vdL', 2, 1)
-	y = Model('vdL', 10,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
-	z = Model('vdL', 20, 1)
+	x = Model('vdL', 3, 1)
+	y = Model('vdL', 20,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
+	z = Model('vdL', 15, 1)
 	
 	# load Model parameters according to model type
 	x.load_parameters()
@@ -624,15 +628,27 @@ def main():
 	y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	z.load_parameters() # do this inside initializer
-	y.set_mgmt_params(20, 0.24, 1, 0)
+
+	y.set_mgmt_params(15, 0.25, 1, 0)
+	y.time_series(y.X1, t, save = False, show = True) 
+
+	# is first param closure length or period???
+	y.set_mgmt_params(15, 0.25, 3, 0)
+	y.time_series(y.X1, t, save = False, show = True) 
+
+	y.set_mgmt_params(15, 0.25, 6, 0)
+	y.time_series(y.X1, t, save = False, show = True) 
+
+
 	# y.time_series(y.X1, t, False, True)
 	# x.set_mgmt_params(20, 0.1, 1, 0) # set management parameters -- closure length, fishing effort, # of closures, poaching 
 	# print(x.run_model(x.X1, t)) # IT WORKED !!!!!!
 
-	x = y.find_unstable_equilibrium(t)
-	print(x)
+	# x = y.find_unstable_equilibrium(t)
+	# print(x)
+
 	# y.bistable_zone(t)
-	y.time_series(y.X1, t, save = False, show = True) 
+	# y.time_series(y.X1, t, save = False, show = True) 
 
 	# x.set_mgmt_params(40, 0.4, 1, 0.5)
 	# x.time_series(x.X1, t, False, True)
@@ -647,18 +663,17 @@ def main():
 	y.coral_recovery_map(t, 0.30)
 	'''
 	ICs = y.X1 
-	y.scenario_plot(t, 0.3, ICs)
+	# y.scenario_plot(t, 0.25, ICs)
 
 
 	y.coral_recovery_map(t, 0.25)
-	y.coral_recovery_map(t, 0.35)
-	z.coral_recovery_map(t, 0.25)
-	z.coral_recovery_map(t, 0.35)
+	# y.coral_recovery_map(t, 0.35)
+	# z.coral_recovery_map(t, 0.25)
+	# z.coral_recovery_map(t, 0.35)
 	
 	# print(x.run_model(parameter list))
 	# x.time_series(parameter list, show = True)
 
-	return 
 
 if __name__ == '__main__':
 	main()
