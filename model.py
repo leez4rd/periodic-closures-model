@@ -5,17 +5,18 @@ import math
 import seaborn as sb
 import multiprocessing as mp 
 from joblib import Parallel, delayed
-
+from matplotlib.colors import ListedColormap
 
 
 class Model:
 	
 	# variable arguments based on model type? 
 	# need a function to tinker with individual parameters, and a function to list them 
-	def __init__(self, model_type, n, frac_nomove): 
+	def __init__(self, model_type, n, frac_nomove, mgmt_strat = 'periodic'): 
 		self.model_type = model_type
 		self.n = n 
 		self.frac_nomove = frac_nomove
+		self.mgmt_strat = mgmt_strat 
 
 		self.f = 0
 		self.closure_length = 0
@@ -56,7 +57,7 @@ class Model:
 		setattr(self,'dPs', np.empty(self.n))
 		setattr(self,'dCs', np.empty(self.n))
 		setattr(self,'dMs', np.empty(self.n))
-		setattr(self, 'state_vec', [self.P,self.C,self.M])
+		# setattr(self, 'state_vec', [self.P,self.C,self.M])
 		# concatenate initial condition arrays 
 		# need to define baseline values somewhere
 		# should these be attributes ?
@@ -65,16 +66,16 @@ class Model:
 		
 	# rass briggs model is only one with different state variables, so just have a separate init function 
 	# better way might be to give initialize... an optional argument 
-	def RB_initialize_patch_model(n, frac_nomove, P0, C0L, C0H, M0vH, M0vL, M0iH, M0iL):
+	def RB_initialize_patch_model(self, P0, C0L, C0H, M0vH, M0vL, M0iH, M0iL):
 
-		frac_dispersed = (1-frac_nomove)*(1/(n)) # fraction of fish that disperse to other patches symmetrically
+		frac_dispersed = (1-self.frac_nomove)*(1/(self.n)) # fraction of fish that disperse to other patches symmetrically
 		# transition matrix for dispersal: element [i,j] of kP describes influx of P from j to i
-		kP = np.empty((n,n))
-		for i in range(n):
-			for j in range(n):
+		kP = np.empty((self.n,self.n))
+		for i in range(self.n):
+			for j in range(self.n):
 				kP[i][j] = frac_dispersed
 				if i == j:
-					kP[i][j] = -frac_dispersed*(n - 1)
+					kP[i][j] = -frac_dispersed*(self.n - 1)
 		setattr(self,'kP', kP)
 
 		# P_influx = np.empty(n) -- I think this is unnecessary 
@@ -86,7 +87,7 @@ class Model:
 		setattr(self,'dCs', np.empty(self.n))
 		setattr(self,'dMis', np.empty(self.n))
 		setattr(self,'dMvs', np.empty(self.n))
-		setattr(self, 'state_vec', [P,C,Mv,Mi])
+		# setattr(self, 'state_vec', [P,C,Mv,Mi])
 		# instead of global variables, can we pass these directly to patch_system? 
 		# concatenate initial condition arrays -- amend to match state vec
 		# X1 = [P0]*n + [C0L]*n + [M0H]*n 
@@ -106,19 +107,29 @@ class Model:
 	# maybe add second way to use it by plugging in array from run_model 
 	def time_series(self, IC_set, t, save, show):
 
-		plt.figure()
+		fig, ax = plt.subplots()
 		sol = odeint(patch_system, IC_set, t, args = (self, ))
 		patch_num = [x for x in range(1, self.n+1)]
+		
+		recov_time = self.get_coral_recovery_time(t)
 
 
 		for i in range(self.n):
-			plt.plot(sol[:, self.n+i],  label = 'patch % d'% (int(i) + 1))
+			ax.plot(sol[:, self.n+i],  label = 'patch % d'% (int(i) + 1))
+		locs, labels = plt.xticks()
+		print(locs)
 
-		plt.xlabel('Time')
-		plt.ylabel('Coral Cover')
-		plt.title('Spatial model')
+		newlabels = [int(int(loc) / int(recov_time)) for loc in locs[1:]]
+
+		print(newlabels)
+
+		ax.set_xticks([recov_time*tick for tick in range(0, 7)])
+		ax.set_xticklabels(newlabels)
+		ax.set_xlabel('Time (scaled to coral recovery time)')
+		
+		ax.set_ylabel('Coral cover (total fraction of area)')
+		ax.set_title('Coral cover in each patch over time')
 		plt.legend(loc=0)
-		ax = plt.gca()
 		ax.set_xlim([0, 500])
 		ax.set_ylim([0, 1])
 		txt="parameters" + "\nfishing when open: " + str(self.f/(1-self.m/self.n)) + "\npercent closure: " + str(self.m/self.n) +"\nclosure time: " + str(self.closure_length)
@@ -132,16 +143,67 @@ class Model:
 	# note that resolution is determined by the previously initialized patch number for spatial heatmaps
 	def coral_recovery_map(self, t, fishing_intensity):
 
+
+		""" MPA color bar for comparison -- really hacky right now bc it involves creating a Model object within current one """
+
+		mako = ListedColormap(sb.color_palette('mako').as_hex())
+
+		fig, (ax1,ax2) = plt.subplots(nrows=2, sharex=True, figsize=(10,10), gridspec_kw={'height_ratios': [1, 1.5*self.n]})
+
+
+		P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
+
+		""" Make MPA colorbar for comparisons """
+		# hacky but works 
+		# need to simulate MPA for second colorbar to juxtapose with heatmap...
+		# creating another model object within this one seems unnecessarily funky 
+		
+		z = Model(self.model_type, self.n, 1, mgmt_strat = 'MPA')
+		mpa_corals = np.empty(self.n)
+		# set initial conditions 
+		z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+		z.load_parameters() # do this inside initializer
+		for i in range(self.n):
+			z.set_mgmt_params(500, 0.25, i, 0)
+			MPAsol = z.run_model(z.X2, t)
+			print(MPAsol)
+			extent = [0, self.n, 0, 1]
+			coral_f = 0
+			for j in range(self.n):
+				coral_f += MPAsol[999][j+self.n]
+			coral_f = coral_f / self.n # patch average
+			mpa_corals[i] = coral_f
+			print(mpa_corals)
+		
+		
+
+		
+
+		ax1.imshow(mpa_corals[np.newaxis][:], cmap=mako, aspect=.10, extent=extent, label='MPA coral cover', vmin=0, vmax=1)
+		ps  = np.linspace(0,self.n,10)
+		# ax1.plot(ps, mpa_corals)
+		ax1.set_title('Coral cover under MPA')
+			# ax1.set_yticks([])
+		ax1.set_xlim(extent[0], extent[1])
+
+		position = ax1.get_position()
+		position = ax2.get_position()
+		print(position.x0)
+		# ax1.set_position([0.125, 0.17, 0.75, 1.1])
+		ax1.set_position([position.x0, position.y0 + position.y1, position.x1, 1.1])
 		# slow version 
 		IC_set = self.X1 	# default to coral-rare 
+		# IC_set = self.X2
 		MAX_TIME = len(t) # last year in the model run 
 
 		coral_array =  np.zeros(shape=(self.n, self.n)) # array of long-term coral averages
 		# CL_array = np.empty(int(0.75*self.n+1)) # array of closure lenghts 
 		# m_array = np.empty(int(self.n / 2))  # array of number of closures 
-
+		closure_lengths = np.empty(self.n)
+		ms = np.empty(self.n)
 		# iterate over  all scenarios 
-		for closure_length in range(1,self.n):
+		for closure_length in range(1,self.n + 1):
+			period = self.n*closure_length
 			for m in range(self.n):
 				# set management parameters for this run 
 				self.set_mgmt_params(closure_length, fishing_intensity, m, self.poaching)
@@ -153,57 +215,86 @@ class Model:
 
 				# dealing with very large period / millennium ratio
 				
-				for year in range(MAX_TIME - (MAX_TIME % (self.n*closure_length)) - (self.n*closure_length), 
-					MAX_TIME - (MAX_TIME % (self.n*closure_length))):
+				for year in range(MAX_TIME - MAX_TIME % period - period, 
+					MAX_TIME - MAX_TIME % period):
 					avg += sol[year][self.n]
 				
-				avg = avg / ((self.n*closure_length) + 1)
+				avg = avg / ((period) + 1)
 				print("Average coral cover for closure length: ", closure_length, " and closure num: ", m)
 				print(avg)
 				coral_array[closure_length-1][m] = avg
+				ms[m] = m
+				closure_lengths[closure_length - 1] = closure_length
 				# CL_array[closure_length-1] = closure_length -- don't think this is necessary 
 				# m_array[m] = m
-		plt.figure()
+		# plt.figure()
 		
+		# fig, ax = plt.subplots(figsize=(5, 5))
 		# axes = plot.axes(projection='3d')
 		# axes.plot_surface(X1, Y1, Z1)
 		# plt.show()
-		plt.title('Long-term outcomes for coral', fontsize = 20)
+		ax2.set_title('Coral cover under periodic closures', fontsize = 15)
 		f = lambda y:self.n*y
 		new_labels = [f(y) for y in range(1, self.n+1)]
-		ax = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "mako", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
-		ax.invert_yaxis()
-		plt.ylabel('Period in years', fontsize = 10) # x-axis label with fontsize 15
-		plt.xlabel('Number of patches closed', fontsize = 10) # y-axis label with fontsize 15q
-		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
-		plt.yticks(rotation=0)
-		plt.show()
-		'''
-		ps  = np.linspace(0,1,100)
-		func = lambda x: 50.476/(x+0.0000001)
-		y  = [func(val) for val in ps] 
-		ax= plt.plot(ps, y, color = "red")
-		plt.title("tau as a function of p at threshold")
-		plt.xlabel("fraction closed")
-		plt.ylabel("period in years")
 
-		plt.xlim([0,1])
-		plt.ylim([0, 100*5+1])
+		ax2 = sb.heatmap(coral_array, vmin = 0.0, vmax = 1.0, cmap = "jet", yticklabels = new_labels, cbar = True) #YlGnBu for original color scheme
+		ax2.invert_yaxis()
+		ax2.set_ylabel('Period in years', fontsize = 10) # x-axis label with fontsize 15
+		ax2.set_xlabel('Number of patches closed out of {} total patches'.format(self.n), fontsize = 10) # y-axis label with fontsize 15
+		# ax.yticks(ax.get_yticks(), ax.get_yticks() * 3)
+		# ax.set_yticks(rotation=0)
+		# plt.show()
+
+
+		# ms, closure_lengths = np.meshgrid(ms, closure_lengths)
+
+		# ax = plt.axes(projection='3d')
+		# ax.plot_surface(ms, closure_lengths, coral_array,
+		#                 cmap='viridis', edgecolor='none')
+		
+
+		""" Plot isoclines """ 
+
+		ps  = np.linspace(0,self.n,100)
+		isocline1 = lambda x: 10/(x+0.0000001)
+		y  = np.asarray([isocline1(val) for val in ps])
+		ax2.plot(ps, y, 'r--')
+		isocline2 = lambda x: 35/(x+0.0000001)
+		y  = np.asarray([isocline2(val) for val in ps])
+		ax2.plot(ps, y, 'r--')
+
+		isocline3 = lambda x: 55/(x+0.0000001)
+		y  = np.asarray([isocline3(val) for val in ps])
+		ax2.plot(ps, y, 'r--')
+
+		isocline4 = lambda x: 89/(x+0.0000001)
+		y  = np.asarray([isocline4(val) for val in ps])
+		ax2.plot(ps, y, 'r--')
+
+		isocline5 = lambda x: 125/(x+0.0000001)
+		y  = np.asarray([isocline5(val) for val in ps])
+		ax2.plot(ps, y, 'r--')
+
+
+		ax2.plot([self.n / 2 + 1]*100, y, 'r-')
+
+		
+
+
+		# show it all 
 		plt.show()
-		'''
+		
 		name = 'longtermcoral_fishing_' + str(fishing_intensity) + '_' + str(self.n) + '.jpg'
 		# plt.savefig(name)
 		plt.close()
-		# plt.show()
-
-		return None
 
 	def bistable_zone(self, t):
 		""" plot final coral cover for different values of fishing effort for two sets of initial conditions """ 
-		final_coral_high = np.empty(50)
-		final_coral_low = np.empty(50)
+		final_coral_high = np.empty(100)
+		final_coral_low = np.empty(100)
 
-		fishing_range = np.linspace(0, 0.99, 50)
+
+		fishing_range = np.linspace(0, 0.99, 100)
 
 		for f in fishing_range:
 
@@ -219,9 +310,9 @@ class Model:
 			# note: this only works without periodic oscillations, which this plot assumes are not present 
 			yrs = len(t)
 			print(f*100)
-			final_coral_high[int(f * 50)] = high_sol[yrs - 1][1]
+			final_coral_high[int(f * 100)] = high_sol[yrs - 1][self.n]
 
-			final_coral_low[int(f * 50)] = low_sol[yrs - 1][1]
+			final_coral_low[int(f * 100)] = low_sol[yrs - 1][self.n]
 
 		plt.plot(fishing_range, final_coral_low, label = 'coral starts low', color = 'blue')
 		plt.plot(fishing_range, final_coral_high, label = 'coral starts high' , color = 'green')
@@ -259,6 +350,8 @@ class Model:
 			return midpoint 
 
 	def scenario_plot(self, t, fishing_intensity, IC_set):
+		P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
+
 
 		final_coral = np.empty(self.n)
 		ms = np.empty(self.n)
@@ -294,16 +387,75 @@ class Model:
 
 			# plot result for this period
 			
-			plt.plot(ms, final_coral, label = 'period = %d' % period, color = color_sequence[period])
-		plt.xlabel('Number of closures')
-		plt.ylabel('Coral Cover')
+			plt.plot(ms / self.n, final_coral, label = 'period = %d' % period, color = color_sequence[period])
+		plt.xlabel('Fraction closed')
+		plt.ylabel('Final coral Cover')
 		plt.title('Final coral state across closure scenarios')
-		plt.legend(loc=0)
-		plt.show()
+		
+		z = Model(self.model_type, self.n, 1, mgmt_strat = 'MPA')
+		mpa_corals = np.empty(self.n)
+		# set initial conditions 
+		z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+		z.load_parameters() # do this inside initializer
+		
+		# loop over frac closed 
+		for i in range(self.n):
+			z.set_mgmt_params(5, 0.25, i, 0)
+			MPAsol = z.run_model(z.X2, t) # coral starting low 
+			
+			# loop over patches 
+			total = 0 
+			for j in range(self.n):
+				coral_f = 0
+				for year in range(MAX_TIME - MAX_TIME % period - period, MAX_TIME - MAX_TIME % period):
+					coral_f += MPAsol[year][j+self.n]
 
-		return None 
+				coral_f = coral_f / period
+				print(coral_f)
+				total += coral_f
+			total = total / self.n
+			print(total)
+
+
+			# coral_f = coral_f / self.n # patch average
+			
+			mpa_corals[i] = total
+			print(mpa_corals)
+
+		arr = np.linspace(0, 1, self.n)
+		plt.plot(arr, mpa_corals, label = 'MPA', color = 'black')
+		plt.xlim([0, 0.75])
+		plt.legend(loc=2)
+
+		plt.show() 
 
 	
+	def get_coral_recovery_time(self, t):
+
+		P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
+
+
+		z = Model(self.model_type, self.n, 1, mgmt_strat = 'MPA')
+		# set initial conditions 
+		z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+		z.load_parameters() # do this inside initializer
+
+		z.set_mgmt_params(500, 0, 0, 0)
+
+		MPAsol = z.run_model(z.X1, t)
+		# list_of_labels = ['fish']*self.n + ['coral']*self.n + ['algae']*self.n
+		# plt.plot(t, MPAsol, label = list_of_labels)
+		# plt.legend(loc=0)
+		# plt.show()
+
+
+		coral_recovery_time = -1
+		for i, state in enumerate(MPAsol):
+			if state[self.n] > 0.60: # what number should I put here?
+				coral_recovery_time = i
+				break
+
+		return coral_recovery_time
 
 
 	# modify this to take custom feedback parameters, or maybe custom anything? 
@@ -408,7 +560,7 @@ class Model:
 			"omega" : 2, #maturation rate of macroalgae from vulnerable to invulnerable class "
 
 			#death rates
-			"dC" : 0.5, #death rate of coral 
+			"dC" : 0.05, #death rate of coral 
 			"dI" : 0.4, #death rate of invulnerable macroalgae
 			"dV" : 0.58, #death rate of vulnerable macroalgae per unit biomass of herbivores "
 
@@ -449,7 +601,7 @@ def patch_system(X, t, system_model):
 			# this could be structured more nicely
 			if system_model.model_type == 'RB':
 				
-				results = rass_briggs(X, i, system_model)
+				results = rass_briggs(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMvs[i] = results[2]
@@ -457,27 +609,27 @@ def patch_system(X, t, system_model):
 
 			elif system_model.model_type == 'BM':
 				
-				results = blackwood(X, i, system_model)
+				results = blackwood(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
 
 			elif system_model.model_type == 'vdL_PC':
 				
-				results = leemput(X, i, system_model)
+				results = leemput(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
 
 			elif system_model.model_type == 'vdL_MP':
-				results = leemput(X, i, system_model)
+				results = leemput(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
 
 			elif system_model.model_type == 'vdL_MC':
 				
-				results = leemput(X, i, system_model)
+				results = leemput(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
@@ -492,7 +644,7 @@ def patch_system(X, t, system_model):
 				
 			else:
 				print("Bad input, defaulting to Blackwood-Mumby!")
-				results = blackwood(X, i, system_model)
+				results = blackwood(X, t, i, system_model, P_influx)
 				system_model.dPs[i] = results[0]
 				system_model.dCs[i] = results[1]
 				system_model.dMs[i] = results[2]
@@ -503,51 +655,67 @@ def patch_system(X, t, system_model):
 			return np.concatenate((system_model.dPs, system_model.dCs, system_model.dMs), axis = 0)
 
 def rass_briggs(X, t, i, system_model, P_influx):
-	P,C,M = X.reshape(4, system_model.n) # will reshaping work since we are passing arrays of length n? 
+
+
+	P, C, Mv, Mi = X.reshape(4, system_model.n)
 	T = 1 - C[i] - Mv[i] - Mi[i]
+	# P,C,M = X.reshape(4, system_model.n) # will reshaping work since we are passing arrays of length n? 
+	# T = 1 - C[i] - Mv[i] - Mi[i]
 	# dC = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
-	dP = P_influx[i]+ system_model.rH*P[i]*(1-P[i]/system_model.K) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+	dP = P_influx[i]+system_model.rH*P[i]*(1-P[i]/system_model.K) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
 	# print(P_influx)
 	# print(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+
+
 	dC = (system_model.phiC*T) + system_model.gTC*T*C[i] - system_model.gamma*system_model.gTI*Mi[i]*C[i] - system_model.dC*C[i]
+
 	dMv = system_model.phiM*T + system_model.rM*T*Mi[i] + system_model.gTV*T*Mv[i] - system_model.dV*Mv[i] - P[i]*Mv[i]*system_model.Graze - system_model.omega * Mv[i]
 	dMi = system_model.omega*Mv[i] + system_model.gTI*T*Mi[i] + system_model.gamma*system_model.gTI*Mi[i]*C[i] - system_model.dI*Mi[i]
+	# print(P, C, Mv, Mi)
+	# print(system_model.f)#/(1-system_model.m/system_model.n))# *P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching)))
 	return [dP, dC, dMv, dMi]
-	'''
 
-	P, C, Mv, Mi = X.reshape(4, n)
-	T = 1 - C - Mv - Mi 
-	dPdt = rH*P*(1-P/K) - system_model.fishing(P[i], f)*P[i] *(system_model.square_signal(t, closure_length, i, m, n, poaching))
-	dCdt = (phiC*T) + gTC*T*C - gamma*gTI*Mi*C - dC*C
-	dMvdt = phiM*T + rM*T*Mi + gTV*T*Mv - dV*Mv - P*Mv*Graze - omega * Mv
-	# conceptual question: why is that second term multiplied by M not Mv? 
-	dMidt = omega*Mv + gTI*T*Mi + gamma*gTI*Mi*C - dI*Mi
-	return [dPdt, dCdt, dMvdt, dMidt]
-	'''
+	
+	# dP = P_influx[i] + system_model.rH*P[i]*(1-P[i]/system_model.K) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, sysem_model.m, system_model.n, system_model.poaching))
+# 	dC = (system_model.phiC*T) + gTC*T*C - gamma*gTI*Mi*C - dC*C
+# 	dMv = phiM*T + rM*T*Mi + gTV*T*Mv - dV*Mv - P*Mv*Graze - omega * Mv
+# 	# conceptual question: why is that second term multiplied by M not Mv? 
+# 	dMi = omega*Mv + gTI*T*Mi + gamma*gTI*Mi*C - dI*Mi
+	# return [dP, dC, dMv, dMi]
+
 
 	# check input
 	# return None 
 
 def K(sigma, C):
 		return (1-sigma)+sigma*C
+def BMK(C):
+	return 1 - 0.5*C
 
-def square_signal(t, closure_length, region, m, n, poaching):
-	if closure_length != 0: 
-		start = int((t % (n*closure_length))/closure_length)
-	else:
-		start = 0
-	if start+m-1 >= n:
-		end = (start + m - 1)%n
+def square_signal(t, closure_length, region, m, n, poaching, mgmt_strat = 'periodic'):
+	if mgmt_strat == 'periodic':
+		if closure_length != 0: 
+			start = int((t % (n*closure_length))/closure_length)
+		else:
+			start = 0
+		if start+m-1 >= n:
+			end = (start + m - 1)%n
 
-	else:
-		end = (start + m - 1)
-	if region >= start and region <= end:
-		return poaching
-	elif start + m - 1 >= n and (region >= start or region <= end):
-		return poaching
-	else:
-		#determine whether to bake displacement into signal
-		return (1-(m/n)*poaching)#/(1-(m/n))
+		else:
+			end = (start + m - 1)
+		if region >= start and region <= end:
+			return poaching
+		elif start + m - 1 >= n and (region >= start or region <= end):
+			return poaching
+		else:
+			#determine whether to bake displacement into signal
+			return (1-(m/n)*poaching)#/(1-(m/n))
+	elif mgmt_strat == 'MPA':
+		if region < m:
+			return poaching  # closed region 
+		else: 
+			return (1 - (m / n) * poaching) # open region 
+
 	
 #this signal function is not quite working yet 
 def sigmoid_signal(t, period, p):
@@ -566,16 +734,19 @@ def fishing(parrotfish, f):
 # is it necessary to send X as a parameter if it is embedded in the class? 
 # should all of these be class methods which can change self.X? 
 def blackwood(X, t, i, system_model, P_influx):
-	'''
-	P, C, M = X.reshape(3, n)
+	
+	P, C, M = X.reshape(3, system_model.n)
 
-	# dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.fishing(P[i], f)*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
-	dPs[i] = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.f*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
-	dCs[i] = r*(1-M[i]-C[i])*C[i]-d*C[i] - a*M[i]*C[i] + i_C*(1-M[i]-C[i])
+	# dP = s*P[i]*(1 - (P[i] / (beta*system_model.K(C[i])))) - system_model.fishing(P[i], f)*P[i]*system_model.square_signal(t, closure_length, i, m, n, poaching)
+
+	dP = system_model.s*P[i]*(1 - (P[i] / (system_model.beta*BMK(C[i])))) - system_model.f/(1-system_model.m/system_model.n)*P[i]*square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching)
+	dC = system_model.r*(1-M[i]-C[i])*C[i]-system_model.d*C[i] - system_model.a*M[i]*C[i] + system_model.i_C*(1-M[i]-C[i])
 	# need to define g(P) before this model is used 
-	dMs[i] = a*M[i]*C[i] - g(P[i])*M[i] *(1/(1-C[i])) + gamma*M[i]*(1-M[i]-C[i])+i_M*(1-M[i]-C[i])
+	dM = system_model.a*M[i]*C[i] - system_model.alpha*P[i]/system_model.beta*M[i] *(1/(1-C[i])) + system_model.gamma*M[i]*(1-M[i]-C[i])+system_model.i_M*(1-M[i]-C[i])
 
-	return np.concatenate((dPs, dCs, dMs), axis=0)
+	# return np.concatenate((dPs, dCs, dMs), axis=0)
+	return [dP, dC, dM]
+	
 	'''
 	P,C,M = X.reshape(3, system_model.n) # will reshaping work since we are passing arrays of length n? 
 	# dC = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
@@ -588,13 +759,16 @@ def blackwood(X, t, i, system_model, P_influx):
 
 
 	return [dP, dC, dM]
+	'''
 
 # will need to pass [self.P, self.C, self.M] to this for it to work 
 def leemput(X, t, i, system_model, P_influx): # COPY THIS FORMAT FOR OTHER MODELS 
+
 	# check input 
 	P,C,M = X.reshape(3, system_model.n) # will reshaping work since we are passing arrays of length n? 
 	# dC = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - fishing(P[i], system_model.f)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
-	dP = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
+
+	dP = P_influx[i]+ system_model.s*P[i]*(1 - (P[i] / K(system_model.sigma,C[i]))) - system_model.f/(1-system_model.m/system_model.n)*P[i] *(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching, system_model.mgmt_strat))
 	# print(P_influx)
 	# print(square_signal(t, system_model.closure_length, i, system_model.m, system_model.n, system_model.poaching))
 	dC = (system_model.i_C + system_model.r*C[i])*(1-M[i]-C[i])*(1-system_model.alpha*M[i]) - system_model.d*C[i]
@@ -612,12 +786,15 @@ def main():
 	
 	yrs = 1000 #total amount of time
 	t = np.linspace(0, yrs, yrs) #timestep array -- same number of timesteps as years 
-	P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4, 0.04, 0.4
+
+	P0, C0L, C0H, M0L, M0H, M0vH, M0vL, M0iH, M0iL = 0.1, 0.04, 0.4, 0.04, 0.2, 0.04, 0.2, 0.04, 0.2
 
 	# create Model objects
 	x = Model('vdL', 3, 1)
-	y = Model('vdL', 20,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
-	z = Model('vdL', 15, 1)
+
+	y = Model('RB', 5,  1) # ISSUE WITH DISPERSAL: kP calculation or P_influx must be incorrect 
+	
+	z = Model('vdL', 20, 1)
 	
 	# load Model parameters according to model type
 	x.load_parameters()
@@ -625,19 +802,27 @@ def main():
 
 	# set initial conditions 
 	x.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
-	y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+	# y.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
+	y.RB_initialize_patch_model(P0, C0L, C0H, M0vH, M0vL, M0iH, M0iL)
+
 	z.initialize_patch_model(P0, C0L, C0H, M0L, M0H)
 	z.load_parameters() # do this inside initializer
 
-	y.set_mgmt_params(15, 0.25, 1, 0)
-	y.time_series(y.X1, t, save = False, show = True) 
+	# print(y.get_coral_recovery_time(t))
+
+	# y.bistable_zone(t)
+
+
+	y.set_mgmt_params(10, 0.25, 2, 0)
+	# y.time_series(y.X1, t, save = False, show = True) 
 
 	# is first param closure length or period???
-	y.set_mgmt_params(15, 0.25, 3, 0)
-	y.time_series(y.X1, t, save = False, show = True) 
+	y.set_mgmt_params(25, 0.25, 2, 0)
+	# y.time_series(y.X1, t, save = False, show = True) 
 
-	y.set_mgmt_params(15, 0.25, 6, 0)
-	y.time_series(y.X1, t, save = False, show = True) 
+
+	y.set_mgmt_params(100, 0.25, 2, 0)
+	# y.time_series(y.X1, t, save = False, show = True) 
 
 
 	# y.time_series(y.X1, t, False, True)
@@ -647,7 +832,7 @@ def main():
 	# x = y.find_unstable_equilibrium(t)
 	# print(x)
 
-	# y.bistable_zone(t)
+	
 	# y.time_series(y.X1, t, save = False, show = True) 
 
 	# x.set_mgmt_params(40, 0.4, 1, 0.5)
@@ -662,11 +847,11 @@ def main():
 	y.coral_recovery_map(t, 0.25)
 	y.coral_recovery_map(t, 0.30)
 	'''
-	ICs = y.X1 
-	# y.scenario_plot(t, 0.25, ICs)
+	ICs = y.X2
+	y.scenario_plot(t, 0.25, ICs)
 
 
-	y.coral_recovery_map(t, 0.25)
+	y.coral_recovery_map(t, 0.27)
 	# y.coral_recovery_map(t, 0.35)
 	# z.coral_recovery_map(t, 0.25)
 	# z.coral_recovery_map(t, 0.35)
